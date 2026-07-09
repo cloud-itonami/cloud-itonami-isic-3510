@@ -1,0 +1,11 @@
+{:itonami.blueprint/id "cloud-itonami-3510"
+ :itonami.blueprint/name "Community Grid Transmission and Distribution Operations"
+ :itonami.blueprint/isic-rev5 "3510"
+ :itonami.blueprint/domain :energy/grid-transmission-distribution
+ :itonami.blueprint/license "AGPL-3.0-or-later"
+ :itonami.blueprint/social-impact [:grid-reliability :energy-access :interconnection-fairness]
+ :itonami.blueprint/governor :grid-transmission-governor
+ :itonami.blueprint/robotics true
+ :itonami.blueprint/required-technologies [:robotics :identity :forms :dmn :bpmn :audit-ledger :telemetry]
+ :itonami.blueprint/optional-technologies [:optimization]
+ :itonami.blueprint/status :public-oss}
