@@ -17,6 +17,14 @@
 - evidence-backed settlement records
 - audit export for every dispatch, sign-off and settlement
 - backup manual grid-operations process
+- customer/meter identity verification on file before any service
+  provisioning or disconnection proposal is even evaluated
+- service disconnection always requires human sign-off, and is
+  permanently refused (no override) for any meter registered as a
+  life-support or critical-infrastructure protected recipient
+- new-service provisioning above the connection-capacity threshold
+  requires a human distribution-capacity-impact review before
+  energizing
 
 ## Certification
 Certified operators must prove robot-safety integrity, interconnection-
