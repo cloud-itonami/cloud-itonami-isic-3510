@@ -37,6 +37,22 @@
       (is (false? (store/meter-already-provisioned? s "meter-1")))
       (is (false? (store/meter-already-disconnected? s "meter-1"))))))
 
+(deftest feeder-read-parity
+  (testing "additive: feeders, a SEPARATE entity from meters"
+    (doseq [[label s] (backends)]
+      (testing label
+        (is (= "SS-01" (:substation-id (store/feeder s "feeder-1"))))
+        (is (= "JPN" (:jurisdiction (store/feeder s "feeder-1"))))
+        (is (= "ATL" (:jurisdiction (store/feeder s "feeder-3"))))
+        (is (= ["feeder-1" "feeder-2" "feeder-3"] (mapv :id (store/all-feeders s))))
+        (is (nil? (store/outage-of s "outage-nonexistent")))
+        (is (= [] (store/outage-history s)))
+        (is (= [] (store/restoration-history s)))
+        (is (zero? (store/next-outage-sequence s "JPN")))
+        (is (zero? (store/next-restoration-sequence s "JPN")))
+        (is (false? (store/feeder-has-open-outage? s "feeder-1")))
+        (is (false? (store/outage-open? s "outage-nonexistent")))))))
+
 (deftest write-and-ledger-parity
   (doseq [[label s] (backends)]
     (testing label
@@ -74,6 +90,43 @@
         (store/append-ledger! s {:op :a :disposition :commit})
         (store/append-ledger! s {:op :b :disposition :hold})
         (is (= [:commit :hold] (mapv :disposition (store/ledger s))))))))
+
+(deftest feeder-outage-write-and-cross-actor-shape-parity
+  (testing "additive: outage-event logging opens the guard, restoration closes it, on BOTH backends"
+    (doseq [[label s] (backends)]
+      (testing label
+        (testing "feeder upsert merges, preserving untouched fields"
+          (store/commit-record! s {:effect :feeder/upsert
+                                   :value {:id "feeder-1" :status :maintenance}})
+          (is (= :maintenance (:status (store/feeder s "feeder-1"))))
+          (is (= "SS-01" (:substation-id (store/feeder s "feeder-1"))) "unrelated field preserved"))
+        (testing "outage-event logging opens the guard and drafts a record"
+          (store/commit-record! s {:effect :feeder/mark-outage-logged :path ["feeder-1"]
+                                   :value {:outage-id "outage-1" :cause-category :cause/equipment-failure}})
+          (is (= "JPN-OUT-000000" (get (first (store/outage-history s)) "record_id")))
+          (is (= "outage-event-draft" (get (first (store/outage-history s)) "kind")))
+          (is (true? (store/feeder-has-open-outage? s "feeder-1")))
+          (is (true? (store/outage-open? s "outage-1")))
+          (is (= "feeder-1" (:feeder-id (store/outage-of s "outage-1"))))
+          (is (= 1 (count (store/outage-history s))))
+          (is (= 1 (store/next-outage-sequence s "JPN"))))
+        (testing "the committed outage-event record carries the isic-3510 -> jsic-4721 cross-actor fields"
+          (let [o (store/outage-of s "outage-1")]
+            (is (= "outage-1" (:grid-outage/id o)))
+            (is (= "cloud-itonami-isic-3510" (:grid-outage/source-actor o)))
+            (is (nil? (:grid-outage/duration-minutes o)) "not yet restored")))
+        (testing "a second outage-event on the SAME feeder is a caller's job to guard against (governor-layer, not store-layer) -- the store itself just tracks the LATEST open outage per feeder"
+          (is (true? (store/feeder-has-open-outage? s "feeder-1"))))
+        (testing "restoration reporting closes the guard and drafts a record"
+          (store/commit-record! s {:effect :feeder/mark-restored :path ["outage-1"]
+                                   :value {:duration-minutes 75}})
+          (is (= "JPN-RST-000000" (get (first (store/restoration-history s)) "record_id")))
+          (is (= "outage-restoration-draft" (get (first (store/restoration-history s)) "kind")))
+          (is (false? (store/feeder-has-open-outage? s "feeder-1")))
+          (is (false? (store/outage-open? s "outage-1")))
+          (is (= 75 (:grid-outage/duration-minutes (store/outage-of s "outage-1"))))
+          (is (= 1 (count (store/restoration-history s))))
+          (is (= 1 (store/next-restoration-sequence s "JPN"))))))))
 
 (deftest datomic-empty-store-is-usable
   (let [s (store/datomic-store)]

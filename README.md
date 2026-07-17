@@ -8,10 +8,11 @@ meters), distinct from generation.
 
 This repository publishes a distribution-utility actor -- customer/
 meter intake, identity verification, billing/service-dispute
-screening, new-service provisioning and service disconnection -- as an
-OSS business that any qualified, regulated community grid
-transmission/distribution operator can fork, deploy, run, improve and
-sell.
+screening, new-service provisioning and service disconnection, PLUS
+(additive) feeder/substation outage-event logging and restoration
+reporting -- as an OSS business that any qualified, regulated
+community grid transmission/distribution operator can fork, deploy,
+run, improve and sell.
 
 Built on this workspace's
 [`langgraph-clj`](https://github.com/com-junkawasaki/langgraph-clj)
@@ -60,17 +61,25 @@ generation companies, especially in deregulated markets).
 
 This actor covers customer/meter intake through identity verification,
 billing/service-dispute screening, new-service provisioning and
-service disconnection. It does **not**, by itself, hold any
-electricity-distribution licence, franchise territory or
+service disconnection, plus (additive) feeder/substation outage-event
+logging and restoration reporting. It does **not**, by itself, hold
+any electricity-distribution licence, franchise territory or
 interconnection agreement required to operate a distribution grid in a
 given jurisdiction, and it does not claim to. It also does **not**
 model real SCADA/telemetry, a real substation/feeder dispatch system,
-or emergency-outage/storm-restoration coordination -- no live grid-
-state monitoring, no real breaker/switchgear command-and-control (see
-`grid.facts`'s own docstring for the honest simplification this makes:
-a starting catalog of electricity-distribution regulators, not a
-survey of every jurisdiction's variant). Whoever deploys and operates
-a live instance (a licensed distribution utility) supplies the real
+or AUTOMATED emergency-outage/storm-restoration coordination -- no
+live grid-state monitoring, no real breaker/switchgear command-and-
+control (see `grid.facts`'s own docstring for the honest
+simplification this makes: a starting catalog of electricity-
+distribution regulators, not a survey of every jurisdiction's variant).
+The outage-event/restoration ops are HUMAN-REPORTED draft records (a
+human operator logs that a feeder went out, and later reports it
+restored) -- NOT a live detection/dispatch system; a real deployment's
+own SCADA/telemetry integration is what would populate these proposals
+from an actual detected event, the same "operator supplies the real
+integration, this actor supplies the governed record" posture the rest
+of this section already establishes. Whoever deploys and operates a
+live instance (a licensed distribution utility) supplies the real
 distribution licence, the real grid infrastructure and any real
 emergency-restoration integrations, and bears that jurisdiction's
 liability -- the software supplies the governed, spec-cited, audited
@@ -111,10 +120,30 @@ new dimension -- value-driven rather than op-kind-driven. See
 `docs/adr/0001-architecture.md` Decision 3.
 
 **Real SCADA/telemetry, breaker/switchgear command-and-control,
-emergency-outage/storm-restoration coordination, and law-enforcement-
-ordered disconnection are OUT OF SCOPE for this actor by construction**
--- there is no op, HARD check, or advisor dispatch branch for any of
-them. See `docs/adr/0001-architecture.md`.
+AUTOMATED emergency-outage/storm-restoration coordination, and
+law-enforcement-ordered disconnection are OUT OF SCOPE for this actor
+by construction** -- there is no op, HARD check, or advisor dispatch
+branch for any of them. See `docs/adr/0001-architecture.md`. (Additive:
+`:actuation/log-outage-event`/`:actuation/report-restoration` DO exist
+as ops, but they are HUMAN-REPORTED draft-record logging -- see "What
+this actor does and does not do" above -- not automated detection or
+dispatch, and (like `:actuation/disconnect-service`) NEVER auto-commit
+at any phase either.)
+
+**Feeder outage-event logging and restoration reporting are a
+SEPARATE, unconditionally high-stakes dual-actuation pair** (on a
+feeder, not a meter -- `grid.governor`/`grid.phase` ns docstrings),
+double-actuation-guarded against opening two outages on the same
+feeder or restoring an outage that isn't open. A committed outage-
+event record's `:grid-outage/id`/`:grid-outage/source-actor`/
+`:grid-outage/duration-minutes` is the upstream half of an entirely
+optional, asymmetric, no-shared-code cross-actor contract with
+[`cloud-itonami-jsic-4721`](https://github.com/cloud-itonami/cloud-itonami-jsic-4721)
+(a downstream cold-chain-warehousing actor that MAY independently
+cross-check its own self-reported reefer/compressor power-outage
+duration against this record) -- see superproject ADR-2608510000. This
+actor has no code path that calls jsic-4721 (or any other downstream
+consumer); it works standalone.
 
 ## The core contract
 
@@ -208,15 +237,37 @@ management and robot-dispatch backends.
 
 | File | Role |
 |---|---|
-| `src/grid/store.cljc` | **Store** protocol -- `MemStore` ‖ `DatomicStore` (`langchain.db`) + append-only audit ledger + separate service-provisioning/service-disconnection history. Both actuation ops act directly on a pre-seeded meter, and the double-actuation guards check dedicated `:service-provisioned?`/`:service-disconnected?` booleans rather than a `:status` value |
-| `src/grid/registry.cljc` | Service-provisioning + service-disconnection draft records, plus `meter-number-invalid-format?` (the FOURTH application of this fleet's format/syntactic-validity check family) and `capacity-over-threshold?` |
-| `src/grid/facts.cljc` | Per-jurisdiction electricity-distribution catalog with an official spec-basis citation per entry, honest coverage reporting |
-| `src/grid/gridadvisor.cljc` | **Grid Distribution Advisor** -- `mock-advisor` ‖ `llm-advisor`; intake/verification/dispute-screening/provisioning/disconnection proposals |
-| `src/grid/governor.cljc` | **Grid Transmission Governor** -- 5 HARD checks (spec-basis · evidence-incomplete · meter-number-format-invalid, structural recompute · protected-recipient, THIS FLEET'S FIRST always-protected-class check · dispute-unresolved, unconditional evaluation) + already-provisioned/already-disconnected guards + 2 soft (capacity-over-threshold · confidence gate) |
-| `src/grid/phase.cljc` | **Phase 0→3** -- read-only → assisted intake → assisted verify → supervised (disconnection always human; under-threshold provisioning and meter intake are the only auto-eligible ops) |
+| `src/grid/store.cljc` | **Store** protocol -- `MemStore` ‖ `DatomicStore` (`langchain.db`) + append-only audit ledger + separate service-provisioning/service-disconnection history. Both actuation ops act directly on a pre-seeded meter, and the double-actuation guards check dedicated `:service-provisioned?`/`:service-disconnected?` booleans rather than a `:status` value. Additive: `feeder`/`all-feeders` + outage-event/restoration history+sequence+guard, the SAME shape applied to (feeder, outage-event) |
+| `src/grid/registry.cljc` | Service-provisioning + service-disconnection draft records, plus `meter-number-invalid-format?` (the FOURTH application of this fleet's format/syntactic-validity check family) and `capacity-over-threshold?`. Additive: `register-outage-event`/`register-outage-restoration` draft records |
+| `src/grid/facts.cljc` | Per-jurisdiction electricity-distribution catalog with an official spec-basis citation per entry, honest coverage reporting. Additive: `outage-catalog` -- a SEPARATE, smaller per-jurisdiction citation table for outage-event/restoration reporting (JPN/USA/GBR only -- DEU is covered in the main `catalog` but honestly has no verified outage-reporting-specific citation) |
+| `src/grid/gridadvisor.cljc` | **Grid Distribution Advisor** -- `mock-advisor` ‖ `llm-advisor`; intake/verification/dispute-screening/provisioning/disconnection proposals. Additive: feeder-status/outage-event/restoration/supply-status proposals; `verify-identity` now also resolves a feeder-id (against `grid.facts/outage-catalog`) when `subject` isn't a meter |
+| `src/grid/governor.cljc` | **Grid Transmission Governor** -- 5 HARD checks (spec-basis · evidence-incomplete · meter-number-format-invalid, structural recompute · protected-recipient, THIS FLEET'S FIRST always-protected-class check · dispute-unresolved, unconditional evaluation) + already-provisioned/already-disconnected guards + 2 soft (capacity-over-threshold · confidence gate). Additive: `spec-basis-violations`/`evidence-incomplete-violations` EXTENDED to also gate the outage-event pair; 2 NEW double-actuation guards (`already-outage-open-violations`/`restoration-without-open-outage-violations`); `high-stakes` gained 2 unconditional members |
+| `src/grid/phase.cljc` | **Phase 0→3** -- read-only → assisted intake → assisted verify → supervised (disconnection always human; under-threshold provisioning and meter intake are the only auto-eligible ops -- UNCHANGED by the additions below). Additive: `:feeder/log-status`/`:supply/report-status` (phase 1+/2+, never auto) and the outage-event pair (phase 3 only, never auto, like disconnection) |
 | `src/grid/operation.cljc` | **OperationActor** -- langgraph-clj StateGraph |
-| `src/grid/sim.cljc` | demo driver |
+| `src/grid/sim.cljc` | demo driver (additive: feeder outage-event/restoration lifecycle + double-guard + no-outage-spec-basis cases) |
 | `test/grid/*_test.clj` | governor contract · phase invariants · store parity · registry conformance · facts coverage |
+
+## Cross-actor grid-outage reference (additive, isic-3510 -> jsic-4721)
+
+A committed `:actuation/log-outage-event`/`:actuation/report-
+restoration` record (`grid.store/outage-of`) carries `:grid-outage/
+id`/`:grid-outage/source-actor`/`:grid-outage/duration-minutes`. A
+downstream physical-operations actor -- e.g.
+[`cloud-itonami-jsic-4721`](https://github.com/cloud-itonami/cloud-itonami-jsic-4721)
+(refrigerated warehousing) self-reporting its own reefer/compressor
+power-outage duration on a `:log-inbound-shipment`/`:log-outbound-
+shipment` proposal -- MAY copy those three fields onto its own
+proposal (`:grid-outage/source-actor`, `:grid-outage/event-id` = this
+record's `:grid-outage/id`, `:grid-outage/duration-minutes`) to
+independently cross-check its self-report against this actor's record.
+Entirely OPTIONAL and asymmetric on both sides, the SAME no-shared-
+code, no-shared-store design as the isic-1075<->jsic-4721 `:handoff`
+record (superproject ADR-2607177500/ADR-2607177600): this actor works
+standalone with zero, one, or many downstream consumers, and has no
+code path that calls jsic-4721 (or any other consumer) at all. See
+superproject ADR-2608510000 for the full write-up and
+`cloud-itonami-jsic-4721`'s own `coldchain.governor`/`coldchain.facts`
+for the downstream half.
 
 ## Business-process coverage (honest)
 
@@ -229,9 +280,10 @@ own `docs/business-model.md` names as its Offer:
 |---|---|
 | Meter intake + per-jurisdiction electricity-distribution checklisting, HARD-gated on an official spec-basis citation (`:meter/intake`/`:identity/verify`) | Real SCADA/telemetry, real substation/feeder dispatch integration (see `grid.facts`'s docstring) |
 | Billing/service-dispute screening, evaluated unconditionally so the screening op itself can HARD-hold on its own finding (`:dispute/screen`) | Real robot dispatch for transmission-line inspection or meter installation |
-| Service provisioning, HARD-gated on full evidence and meter-number structural validity, plus a double-provisioning guard; auto-eligible at phase 3 when under the capacity threshold (`:actuation/provision-service`) | Emergency-outage/storm-restoration coordination, and law-enforcement-ordered disconnection (deliberately outside LLM/actor control) |
-| Service disconnection, HARD-gated on full evidence, protected-recipient status (un-overridable) and a double-disconnection guard, never auto at any phase (`:actuation/disconnect-service`) | |
-| Immutable audit ledger for every intake/verification/screening/provisioning/disconnection decision | |
+| Service provisioning, HARD-gated on full evidence and meter-number structural validity, plus a double-provisioning guard; auto-eligible at phase 3 when under the capacity threshold (`:actuation/provision-service`) | AUTOMATED emergency-outage/storm-restoration coordination, and law-enforcement-ordered disconnection (deliberately outside LLM/actor control) |
+| Service disconnection, HARD-gated on full evidence, protected-recipient status (un-overridable) and a double-disconnection guard, never auto at any phase (`:actuation/disconnect-service`) | Interconnection-request management, dispatch and settlement records (this repo's own longer-run business-model vision, `docs/business-model.md` -- not yet implemented) |
+| **(additive)** Feeder/substation status recording (`:feeder/log-status`), HUMAN-REPORTED outage-event logging + restoration reporting, HARD-gated on a SEPARATE outage-reporting spec-basis and double-open/double-restore guards, never auto at any phase (`:actuation/log-outage-event`/`:actuation/report-restoration`); routine demand-side supply-status reporting (`:supply/report-status`) | |
+| Immutable audit ledger for every intake/verification/screening/provisioning/disconnection/outage-event/restoration decision | |
 
 Extending coverage is additive: add the next gate (e.g. a seasonal-
 disconnection-moratorium check) as its own governed op with its own
@@ -249,6 +301,16 @@ end-to-end, not a claim of global coverage. Adding a jurisdiction is
 additive: one map entry in `grid.facts/catalog`, citing a real
 official source -- never fabricate a jurisdiction's requirements to
 make coverage look bigger.
+
+`grid.facts/outage-catalog` (additive) is a SEPARATE, smaller
+per-jurisdiction table for outage-event/restoration-reporting
+specifically -- currently 3 seeded (JPN: 電気事業法/ANRE-METI; USA: NERC
+EOP-004, Bulk-Electric-System-level only, honestly out of scope for
+distribution-level state-regulated reporting; GBR: The Electricity
+(Standards of Performance) Regulations 2015). DEU has a `catalog`
+entry but deliberately NO `outage-catalog` entry -- no verified
+outage-reporting-specific citation, never fabricated to make coverage
+look bigger.
 
 ## Maturity
 

@@ -114,7 +114,44 @@
       residential/small-commercial connection MAY reach phase-3
       auto-commit while a clean but large connection always escalates
       for a distribution capacity-impact review.
-    - low confidence (< `confidence-floor`)."
+    - low confidence (< `confidence-floor`).
+
+  ── Additive: feeder outage-event logging + restoration reporting ──
+
+  `:actuation/log-outage-event` (feeder-id subject) and `:actuation/
+  report-restoration` (outage-id subject) are a SEPARATE dual-
+  actuation pair, on a SEPARATE entity (a feeder, not a meter) and a
+  SEPARATE evidence catalog (`grid.facts/outage-catalog`, not
+  `grid.facts/catalog` -- a feeder is network infrastructure, there is
+  no customer identity to verify for an outage event). Both are
+  UNCONDITIONALLY `high-stakes` (like `:actuation/disconnect-service`,
+  NOT like the value-driven `:actuation/provision-service` asymmetry
+  above) -- see `grid.phase`: neither is ever in any phase's `:auto`
+  set. `spec-basis-violations`/`evidence-incomplete-violations` above
+  are EXTENDED (their op-membership sets grew; their logic for the
+  original ops is unchanged) to also gate these two ops against
+  `grid.facts/outage-spec-basis`/`grid.facts/outage-evidence-
+  satisfied?`. Two NEW double-actuation guards, the SAME 'check a
+  dedicated boolean, not status' discipline as `already-provisioned-
+  violations`/`already-disconnected-violations`:
+    - `already-outage-open-violations` -- `:actuation/log-outage-
+      event` for a feeder that already has an open (unrestored)
+      outage, off `grid.store/feeder-has-open-outage?`.
+    - `restoration-without-open-outage-violations` -- `:actuation/
+      report-restoration` whose outage-id does not resolve to a
+      currently-open outage (unknown or already restored), off
+      `grid.store/outage-open?`.
+
+  Why this exists: a committed outage-event record's `:grid-outage/
+  id`/`:grid-outage/source-actor`/`:grid-outage/duration-minutes`
+  (`grid.store`'s `outage-of`) is the upstream half of an entirely
+  optional, asymmetric, no-shared-code cross-actor contract with
+  `cloud-itonami-jsic-4721`'s `coldchain.governor` (a downstream
+  physical-operations actor that self-reports its own reefer/
+  compressor power-outage duration and MAY independently cross-check
+  it against this actor's record) -- see superproject ADR-2608510000.
+  This governor has no code path that calls jsic-4721 (or any other
+  downstream consumer); it works standalone."
   (:require [grid.facts :as facts]
             [grid.registry :as registry]
             [grid.store :as store]))
@@ -125,22 +162,30 @@
   "Stakes grave enough to ALWAYS require a human, even when clean.
   Unlike every SYMMETRIC dual-actuation sibling (`cloud-itonami-isic-
   6190`/`-6120`/`-6130`/`-3600`, where BOTH actuations are permanently
-  excluded from auto-commit), this actor's `high-stakes` set has only
-  ONE unconditional member -- `:actuation/disconnect-service` --
-  matching `cloud-itonami-isic-6391`'s own one-member `high-stakes`
+  excluded from auto-commit), this actor's ORIGINAL `high-stakes` set
+  had only ONE unconditional member -- `:actuation/disconnect-service`
+  -- matching `cloud-itonami-isic-6391`'s own one-member `high-stakes`
   shape. `:actuation/provision-service` is high-stakes only
   conditionally, via `capacity-over-threshold-violations` below (see ns
-  docstring)."
-  #{:actuation/disconnect-service})
+  docstring). Additive: `:actuation/log-outage-event`/`:actuation/
+  report-restoration` (the feeder outage-event pair, see ns docstring)
+  are ALSO unconditional members, the SAME symmetric-pair shape
+  `:actuation/disconnect-service` uses on its own (meter, service)
+  entity, applied here to the (feeder, outage-event) entity instead."
+  #{:actuation/disconnect-service :actuation/log-outage-event :actuation/report-restoration})
 
 ;; ----------------------------- checks -----------------------------
 
 (defn- spec-basis-violations
   "An `:identity/verify` (or actuation) proposal with no spec-basis
   citation is a HARD violation -- never invent a jurisdiction's
-  electricity-distribution requirements."
+  electricity-distribution requirements. Additive: `:actuation/log-
+  outage-event`/`:actuation/report-restoration` (the feeder
+  outage-event pair, see ns docstring) joined this op set -- same
+  check, same logic, no change for the original three ops."
   [{:keys [op]} proposal]
-  (when (contains? #{:identity/verify :actuation/provision-service :actuation/disconnect-service} op)
+  (when (contains? #{:identity/verify :actuation/provision-service :actuation/disconnect-service
+                     :actuation/log-outage-event :actuation/report-restoration} op)
     (let [value (:value proposal)]
       (when (or (empty? (:cites proposal))
                 (and (contains? value :spec-basis) (nil? (:spec-basis value))))
@@ -152,16 +197,48 @@
   the jurisdiction's required customer-identity-verification-record/
   meter-registration-record/interconnection-capacity-review-record/
   service-disconnection-log evidence must actually be satisfied -- do
-  not trust the advisor's self-reported confidence alone."
+  not trust the advisor's self-reported confidence alone.
+
+  Additive: for `:actuation/log-outage-event` (feeder-id subject) /
+  `:actuation/report-restoration` (outage-id subject -- resolved to
+  its feeder via `store/outage-of`), the SAME check is applied against
+  the SEPARATE `grid.facts/outage-catalog`/`grid.facts/outage-
+  evidence-satisfied?` (a feeder is not a meter -- see ns docstring).
+  `identity-verification-of` is REUSED as-is (its `:verifications` map
+  is keyed by an arbitrary id string, so a feeder-id and a meter-id
+  never collide) -- no new store method needed for that half. Logic
+  for the original two ops is unchanged."
   [{:keys [op subject]} st]
-  (when (contains? #{:actuation/provision-service :actuation/disconnect-service} op)
+  (cond
+    (contains? #{:actuation/provision-service :actuation/disconnect-service} op)
     (let [m (store/meter st subject)
           verification (store/identity-verification-of st subject)]
       (when-not (and verification
                      (facts/required-evidence-satisfied?
                       (:jurisdiction m) (:checklist verification)))
         [{:rule :evidence-incomplete
-          :detail "法域の必要書類(顧客確認記録/計量器登録記録/接続容量審査記録/供給停止台帳等)が充足していない状態での提案"}]))))
+          :detail "法域の必要書類(顧客確認記録/計量器登録記録/接続容量審査記録/供給停止台帳等)が充足していない状態での提案"}]))
+
+    (= op :actuation/log-outage-event)
+    (let [f (store/feeder st subject)
+          verification (store/identity-verification-of st subject)]
+      (when-not (and verification
+                     (facts/outage-evidence-satisfied?
+                      (:jurisdiction f) (:checklist verification)))
+        [{:rule :evidence-incomplete
+          :detail "法域のoutage事象記録要件(outage-event-log等)が充足していない状態での提案"}]))
+
+    (= op :actuation/report-restoration)
+    (let [feeder-id (:feeder-id (store/outage-of st subject))
+          f (store/feeder st feeder-id)
+          verification (store/identity-verification-of st feeder-id)]
+      (when-not (and verification
+                     (facts/outage-evidence-satisfied?
+                      (:jurisdiction f) (:checklist verification)))
+        [{:rule :evidence-incomplete
+          :detail "法域のoutage事象記録要件(restoration-time-log等)が充足していない状態での提案"}]))
+
+    :else nil))
 
 (defn- meter-number-format-invalid-violations
   "For `:actuation/provision-service`, INDEPENDENTLY recompute whether
@@ -234,6 +311,31 @@
       [{:rule :already-disconnected
         :detail (str subject " は既に供給停止済み")}])))
 
+(defn- already-outage-open-violations
+  "For `:actuation/log-outage-event`, refuses to open a SECOND outage
+  on the SAME feeder while one is already open, off a dedicated
+  `grid.store/feeder-has-open-outage?` boolean (never a `:status`
+  value) -- the SAME discipline `already-provisioned-violations` uses,
+  applied to (feeder, outage-event) instead of (meter, service)."
+  [{:keys [op subject]} st]
+  (when (= op :actuation/log-outage-event)
+    (when (store/feeder-has-open-outage? st subject)
+      [{:rule :already-open-outage
+        :detail (str subject " のフィーダーには既に未復旧のoutageイベントが存在する")}])))
+
+(defn- restoration-without-open-outage-violations
+  "For `:actuation/report-restoration`, refuses to report a restoration
+  whose outage-id does not resolve to a currently-open outage (either
+  it never existed, or it was already restored), off a dedicated
+  `grid.store/outage-open?` boolean -- the SAME discipline
+  `already-disconnected-violations` uses, applied to the closing half
+  of the (feeder, outage-event) lifecycle."
+  [{:keys [op subject]} st]
+  (when (= op :actuation/report-restoration)
+    (when-not (store/outage-open? st subject)
+      [{:rule :restoration-without-open-outage
+        :detail (str subject " は現在未復旧(open)状態のoutageイベントとして見つからない(存在しないか既に復旧済み)")}])))
+
 (defn- capacity-over-threshold-violations
   "For `:actuation/provision-service`, INDEPENDENTLY recompute whether
   the meter's own recorded `:capacity-kw` exceeds `grid.registry/
@@ -259,7 +361,9 @@
                            (protected-recipient-violations request st)
                            (dispute-unresolved-violations request proposal st)
                            (already-provisioned-violations request st)
-                           (already-disconnected-violations request st)))
+                           (already-disconnected-violations request st)
+                           (already-outage-open-violations request st)
+                           (restoration-without-open-outage-violations request st)))
         conf (:confidence proposal 0.0)
         low? (< conf confidence-floor)
         over-threshold? (capacity-over-threshold-violations request st)

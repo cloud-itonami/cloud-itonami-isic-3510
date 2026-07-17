@@ -81,6 +81,51 @@
     (println "== actuation/disconnect-service meter-1 AGAIN (double-disconnection -> HARD hold) ==")
     (println (exec! actor "t14" {:op :actuation/disconnect-service :subject "meter-1"} operator))
 
+    ;; ── Additive: feeder outage-event logging + restoration reporting ──
+    ;; SEPARATE dual-actuation pair, on a SEPARATE entity (a feeder, not
+    ;; a meter) -- see `grid.governor`/`grid.phase` ns docstrings. The
+    ;; upstream half of the entirely optional isic-3510 <-> jsic-4721
+    ;; cross-actor contract (superproject ADR-2608510000).
+
+    (println "== identity/verify feeder-1 (reuses :identity/verify against grid.facts/outage-catalog; escalates -- human approves) ==")
+    (println (exec! actor "t15" {:op :identity/verify :subject "feeder-1"} operator))
+    (println (approve! actor "t15"))
+
+    (println "== actuation/log-outage-event feeder-1 (clean; ALWAYS escalates -- human approves) ==")
+    (let [r (exec! actor "t16" {:op :actuation/log-outage-event :subject "feeder-1"
+                                :outage-id "outage-1" :cause-category :cause/equipment-failure} operator)]
+      (println r)
+      (println "-- human distribution operator approves --")
+      (println (approve! actor "t16")))
+
+    (println "== actuation/report-restoration outage-1 (clean; ALWAYS escalates -- human approves; closes the guard) ==")
+    (let [r (exec! actor "t17" {:op :actuation/report-restoration :subject "outage-1" :duration-minutes 75} operator)]
+      (println r)
+      (println "-- human distribution operator approves --")
+      (println (approve! actor "t17")))
+
+    (println "== actuation/log-outage-event feeder-1 AGAIN, no prior verification for THIS attempt is fine (already verified above) but feeder-1's outage is already restored, so this opens a FRESH outage -- clean, escalates ==")
+    (println (exec! actor "t18" {:op :actuation/log-outage-event :subject "feeder-1"
+                                 :outage-id "outage-2" :cause-category :cause/vegetation-contact} operator))
+    (println (approve! actor "t18"))
+
+    (println "== actuation/log-outage-event feeder-1 AGAIN while outage-2 is still open (double-open -> HARD hold) ==")
+    (println (exec! actor "t19" {:op :actuation/log-outage-event :subject "feeder-1"
+                                 :outage-id "outage-3" :cause-category :cause/vehicle-accident} operator))
+
+    (println "== actuation/report-restoration outage-nonexistent (never logged -> HARD hold) ==")
+    (println (exec! actor "t20" {:op :actuation/report-restoration :subject "outage-nonexistent" :duration-minutes 10} operator))
+
+    (println "== identity/verify feeder-3 (ATL -- no grid.facts/outage-catalog spec-basis -> HARD hold on the later outage-event attempt) ==")
+    (println (exec! actor "t21" {:op :identity/verify :subject "feeder-3"} operator))
+    (println (approve! actor "t21"))
+    (println (exec! actor "t22" {:op :actuation/log-outage-event :subject "feeder-3"
+                                 :outage-id "outage-4" :cause-category :cause/unknown} operator))
+
+    (println "== supply/report-status feeder-2 (routine, non-actuation; still escalates in this V1) ==")
+    (println (exec! actor "t23" {:op :supply/report-status :subject "feeder-2"} operator))
+    (println (approve! actor "t23"))
+
     (println "== audit ledger ==")
     (doseq [f (store/ledger db)] (println f))
 
@@ -88,4 +133,10 @@
     (doseq [r (store/provisioning-history db)] (println r))
 
     (println "== draft service-disconnection records ==")
-    (doseq [r (store/disconnection-history db)] (println r))))
+    (doseq [r (store/disconnection-history db)] (println r))
+
+    (println "== draft outage-event records ==")
+    (doseq [r (store/outage-history db)] (println r))
+
+    (println "== draft outage-restoration records ==")
+    (doseq [r (store/restoration-history db)] (println r))))

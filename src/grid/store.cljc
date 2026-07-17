@@ -31,7 +31,28 @@
   jurisdictional basis, approved by whom' is always a query over an
   immutable log -- the audit trail a community trusting a distribution
   utility needs, and the evidence a utility needs if a provisioning or
-  disconnection decision is later disputed."
+  disconnection decision is later disputed.
+
+  ── Additive: feeders + outage-event/restoration tracking ──
+
+  A `feeder` is a SEPARATE entity from a `meter` -- network
+  infrastructure (a distribution feeder/substation) upstream of any one
+  customer's meter, not a customer-facing entity. Feeders reuse the
+  SAME `identity-verification-of`/`:verification/set` mechanism meters
+  use (the `:verifications` map is keyed by an arbitrary id string, so
+  a feeder-id and a meter-id never collide -- no new protocol method
+  needed for that half). What IS new: `all-feeders`/`feeder`, and a
+  dual outage-event/restoration history+sequence-counter+double-
+  actuation-guard triple (`feeder-has-open-outage?`/`outage-open?`,
+  never a `:status` value) -- the SAME discipline `meter-already-
+  provisioned?`/`meter-already-disconnected?` already establish for
+  meters, applied to the (feeder, outage-event) pair instead of
+  (meter, service). See superproject ADR-2608510000 for why: a
+  committed outage-event record's `:grid-outage/id`/`:grid-outage/
+  source-actor`/`:grid-outage/duration-minutes` fields are the shared,
+  no-code, optional wire shape `cloud-itonami-jsic-4721`'s
+  `coldchain.governor` independently cross-checks its own self-reported
+  `:lot/power-outage-minutes` against."
   (:require #?(:clj  [clojure.edn :as edn]
                :cljs [cljs.reader :as edn])
             [grid.registry :as registry]
@@ -51,7 +72,18 @@
   (meter-already-disconnected? [s meter-id] "has this meter's service already been disconnected?")
   (commit-record! [s record] "apply a committed op's record to the SSoT")
   (append-ledger! [s fact]   "append one immutable decision fact")
-  (with-meters [s meters] "replace/seed the meter directory (map id->meter)"))
+  (with-meters [s meters] "replace/seed the meter directory (map id->meter)")
+  ;; ---- additive: feeders + outage-event/restoration tracking ----
+  (feeder [s id] "a feeder/substation record, or nil")
+  (all-feeders [s] "all feeder/substation records, sorted by id")
+  (outage-of [s outage-id] "the committed outage-event record for this id, or nil")
+  (outage-history [s] "the append-only outage-event-logging history (grid.registry drafts)")
+  (restoration-history [s] "the append-only restoration-reporting history (grid.registry drafts)")
+  (next-outage-sequence [s jurisdiction] "next outage-number sequence for a jurisdiction")
+  (next-restoration-sequence [s jurisdiction] "next restoration-number sequence for a jurisdiction")
+  (feeder-has-open-outage? [s feeder-id] "does this feeder currently have an open (unrestored) outage?")
+  (outage-open? [s outage-id] "is this outage-event id currently open (unrestored)? unknown ids are never open")
+  (with-feeders [s feeders] "replace/seed the feeder directory (map id->feeder)"))
 
 ;; ----------------------------- demo data -----------------------------
 
@@ -61,7 +93,15 @@
   run offline. `meter-4` carries `:protected-recipient?` true (a
   life-support/critical-infrastructure customer -- see `grid.governor`'s
   `protected-recipient-violations`), `meter-5` carries a `:capacity-kw`
-  above `grid.registry/default-capacity-threshold-kw`."
+  above `grid.registry/default-capacity-threshold-kw`.
+
+  `:feeders` (additive) is a small, SEPARATE demo set covering the
+  outage-event/restoration lifecycle: `feeder-1`/`feeder-2` are JPN
+  (this catalog's most fully-covered jurisdiction, both `grid.facts/
+  catalog` and `grid.facts/outage-catalog`), `feeder-3` is ATL --
+  `grid.facts/outage-catalog` deliberately has NO entry for ATL, the
+  same 'no fabricated jurisdiction' failure mode `meter-2` already
+  exercises for the meter side."
   []
   {:meters
    {"meter-1" {:id "meter-1" :customer-name "Sakura Ryokan"
@@ -105,7 +145,11 @@
                :protected-recipient? false
                :billing-dispute-unresolved? true
                :service-provisioned? true :service-disconnected? false
-               :jurisdiction "JPN" :status :active}}})
+               :jurisdiction "JPN" :status :active}}
+   :feeders
+   {"feeder-1" {:id "feeder-1" :substation-id "SS-01" :jurisdiction "JPN" :status :in-service}
+    "feeder-2" {:id "feeder-2" :substation-id "SS-02" :jurisdiction "JPN" :status :in-service}
+    "feeder-3" {:id "feeder-3" :substation-id "SS-99" :jurisdiction "ATL" :status :in-service}}})
 
 ;; ----------------------------- shared commit logic -----------------------------
 
@@ -133,6 +177,40 @@
      :meter-patch {:service-disconnected? true
                    :disconnection-number (get result "disconnection_number")}}))
 
+(defn- log-outage-event!
+  "Backend-agnostic `:feeder/mark-outage-logged` (additive) -- looks up
+  the feeder via the protocol and drafts the outage-event record.
+  Returns {:result .. :outage-record ..} for the caller to persist;
+  `:outage-record` is the NEW open-outage entry keyed by `outage-id`
+  (feeder-id, jurisdiction, `:open? true`, `:grid-outage/*` fields
+  nil-duration until restored) -- the SAME shape both `MemStore` and
+  `DatomicStore` write."
+  [s feeder-id outage-id cause-category]
+  (let [f (feeder s feeder-id)
+        seq-n (next-outage-sequence s (:jurisdiction f))
+        result (registry/register-outage-event feeder-id outage-id (:jurisdiction f) cause-category seq-n)]
+    {:result result
+     :outage-record {:id outage-id :feeder-id feeder-id :jurisdiction (:jurisdiction f)
+                      :cause-category cause-category :open? true
+                      :grid-outage/id outage-id
+                      :grid-outage/source-actor "cloud-itonami-isic-3510"
+                      :grid-outage/duration-minutes nil}}))
+
+(defn- report-restoration!
+  "Backend-agnostic `:feeder/mark-restored` (additive) -- looks up the
+  open outage-event via the protocol and drafts the restoration
+  record. Returns {:result .. :outage-patch ..} for the caller to
+  persist; `:outage-patch` closes the outage (`:open? false`) and sets
+  `:grid-outage/duration-minutes` -- the field cloud-itonami-jsic-4721
+  cross-checks its own self-reported `:lot/power-outage-minutes`
+  against (see this ns's own docstring)."
+  [s outage-id duration-minutes]
+  (let [o (outage-of s outage-id)
+        seq-n (next-restoration-sequence s (:jurisdiction o))
+        result (registry/register-outage-restoration outage-id (:jurisdiction o) seq-n)]
+    {:result result
+     :outage-patch {:open? false :grid-outage/duration-minutes duration-minutes}}))
+
 ;; ----------------------------- MemStore (default) -----------------------------
 
 (defrecord MemStore [a]
@@ -148,6 +226,16 @@
   (next-disconnection-sequence [_ jurisdiction] (get-in @a [:disconnection-sequences jurisdiction] 0))
   (meter-already-provisioned? [_ meter-id] (boolean (get-in @a [:meters meter-id :service-provisioned?])))
   (meter-already-disconnected? [_ meter-id] (boolean (get-in @a [:meters meter-id :service-disconnected?])))
+  (feeder [_ id] (get-in @a [:feeders id]))
+  (all-feeders [_] (sort-by :id (vals (:feeders @a))))
+  (outage-of [_ outage-id] (get-in @a [:outages outage-id]))
+  (outage-history [_] (:outage-logs @a))
+  (restoration-history [_] (:restorations @a))
+  (next-outage-sequence [_ jurisdiction] (get-in @a [:outage-sequences jurisdiction] 0))
+  (next-restoration-sequence [_ jurisdiction] (get-in @a [:restoration-sequences jurisdiction] 0))
+  (feeder-has-open-outage? [_ feeder-id]
+    (boolean (some #(and (= feeder-id (:feeder-id %)) (:open? %)) (vals (:outages @a)))))
+  (outage-open? [_ outage-id] (boolean (:open? (get-in @a [:outages outage-id]))))
   (commit-record! [s {:keys [effect path value payload]}]
     (case effect
       :meter/upsert
@@ -180,27 +268,60 @@
                        (update-in [:meters meter-id] merge meter-patch)
                        (update :disconnections registry/append result))))
         result)
+
+      ;; ---- additive: feeder/outage-event tracking ----
+      :feeder/upsert
+      (swap! a update-in [:feeders (:id value)] merge value)
+
+      :feeder/mark-outage-logged
+      (let [feeder-id (first path)
+            outage-id (:outage-id value)
+            cause-category (:cause-category value)
+            {:keys [result outage-record]} (log-outage-event! s feeder-id outage-id cause-category)
+            jurisdiction (:jurisdiction (feeder s feeder-id))]
+        (swap! a (fn [state]
+                   (-> state
+                       (update-in [:outage-sequences jurisdiction] (fnil inc 0))
+                       (assoc-in [:outages outage-id] outage-record)
+                       (update :outage-logs registry/append result))))
+        result)
+
+      :feeder/mark-restored
+      (let [outage-id (first path)
+            duration-minutes (:duration-minutes value)
+            {:keys [result outage-patch]} (report-restoration! s outage-id duration-minutes)
+            jurisdiction (:jurisdiction (outage-of s outage-id))]
+        (swap! a (fn [state]
+                   (-> state
+                       (update-in [:restoration-sequences jurisdiction] (fnil inc 0))
+                       (update-in [:outages outage-id] merge outage-patch)
+                       (update :restorations registry/append result))))
+        result)
       nil)
     s)
   (append-ledger! [_ fact] (swap! a update :ledger conj fact) fact)
-  (with-meters [s meters] (when (seq meters) (swap! a assoc :meters meters)) s))
+  (with-meters [s meters] (when (seq meters) (swap! a assoc :meters meters)) s)
+  (with-feeders [s feeders] (when (seq feeders) (swap! a assoc :feeders feeders)) s))
 
 (defn seed-db
-  "A MemStore seeded with the demo meter set. The deterministic
+  "A MemStore seeded with the demo meter+feeder set. The deterministic
   default."
   []
   (->MemStore (atom (assoc (demo-data)
                            :verifications {} :dispute-screens {} :ledger [] :provisioning-sequences {}
-                           :provisionings [] :disconnection-sequences {} :disconnections []))))
+                           :provisionings [] :disconnection-sequences {} :disconnections []
+                           :outages {} :outage-sequences {} :outage-logs []
+                           :restoration-sequences {} :restorations []))))
 
 ;; ----------------------------- DatomicStore (langchain.db) -----------------------------
 
 (def ^:private schema
   "DataScript/Datomic-style schema: only constraint attrs are declared.
   Map/compound values (verification/dispute-screen payloads, ledger
-  facts, provisioning/disconnection records) are stored as EDN strings
-  so `langchain.db` doesn't expand them into sub-entities -- the same
-  convention every sibling actor's store uses."
+  facts, provisioning/disconnection/outage/restoration records) are
+  stored as EDN strings so `langchain.db` doesn't expand them into
+  sub-entities -- the same convention every sibling actor's store
+  uses."
   {:meter/id                          {:db/unique :db.unique/identity}
    :verification/meter-id             {:db/unique :db.unique/identity}
    :dispute-screen/meter-id           {:db/unique :db.unique/identity}
@@ -208,7 +329,14 @@
    :provisioning/seq                  {:db/unique :db.unique/identity}
    :disconnection/seq                 {:db/unique :db.unique/identity}
    :provisioning-sequence/jurisdiction {:db/unique :db.unique/identity}
-   :disconnection-sequence/jurisdiction {:db/unique :db.unique/identity}})
+   :disconnection-sequence/jurisdiction {:db/unique :db.unique/identity}
+   ;; ---- additive: feeders + outage-event/restoration tracking ----
+   :feeder/id                         {:db/unique :db.unique/identity}
+   :outage/id                         {:db/unique :db.unique/identity}
+   :outage-log/seq                    {:db/unique :db.unique/identity}
+   :restoration/seq                   {:db/unique :db.unique/identity}
+   :outage-sequence/jurisdiction      {:db/unique :db.unique/identity}
+   :restoration-sequence/jurisdiction {:db/unique :db.unique/identity}})
 
 (defn- enc [v] (pr-str v))
 (defn- dec* [s] (when s (edn/read-string s)))
@@ -247,6 +375,45 @@
      :service-disconnected? (boolean (:meter/service-disconnected? m))
      :jurisdiction (:meter/jurisdiction m) :status (:meter/status m)
      :provisioning-number (:meter/provisioning-number m) :disconnection-number (:meter/disconnection-number m)}))
+
+;; ---- additive: feeder + outage-event tx/pull helpers ----
+
+(defn- feeder->tx [{:keys [id substation-id jurisdiction status]}]
+  (cond-> {:feeder/id id}
+    substation-id (assoc :feeder/substation-id substation-id)
+    jurisdiction  (assoc :feeder/jurisdiction jurisdiction)
+    status        (assoc :feeder/status status)))
+
+(def ^:private feeder-pull
+  [:feeder/id :feeder/substation-id :feeder/jurisdiction :feeder/status])
+
+(defn- pull->feeder [f]
+  (when (:feeder/id f)
+    {:id (:feeder/id f) :substation-id (:feeder/substation-id f)
+     :jurisdiction (:feeder/jurisdiction f) :status (:feeder/status f)}))
+
+(defn- outage->tx [{:keys [id feeder-id jurisdiction cause-category open?]
+                     :as outage}]
+  {:outage/id id
+   :outage/feeder-id feeder-id
+   :outage/jurisdiction jurisdiction
+   :outage/cause-category (str cause-category)
+   :outage/open? (boolean open?)
+   :outage/duration-minutes (:grid-outage/duration-minutes outage)})
+
+(def ^:private outage-pull
+  [:outage/id :outage/feeder-id :outage/jurisdiction :outage/cause-category
+   :outage/open? :outage/duration-minutes])
+
+(defn- pull->outage [o]
+  (when (:outage/id o)
+    {:id (:outage/id o) :feeder-id (:outage/feeder-id o)
+     :jurisdiction (:outage/jurisdiction o)
+     :cause-category (:outage/cause-category o)
+     :open? (boolean (:outage/open? o))
+     :grid-outage/id (:outage/id o)
+     :grid-outage/source-actor "cloud-itonami-isic-3510"
+     :grid-outage/duration-minutes (:outage/duration-minutes o)}))
 
 (defrecord DatomicStore [conn]
   Store
@@ -290,6 +457,39 @@
     (boolean (:service-provisioned? (meter s meter-id))))
   (meter-already-disconnected? [s meter-id]
     (boolean (:service-disconnected? (meter s meter-id))))
+  ;; ---- additive: feeders + outage-event/restoration tracking ----
+  (feeder [_ id]
+    (pull->feeder (d/pull (d/db conn) feeder-pull [:feeder/id id])))
+  (all-feeders [_]
+    (->> (d/q '[:find [?id ...] :where [?e :feeder/id ?id]] (d/db conn))
+         (map #(pull->feeder (d/pull (d/db conn) feeder-pull [:feeder/id %])))
+         (sort-by :id)))
+  (outage-of [_ outage-id]
+    (pull->outage (d/pull (d/db conn) outage-pull [:outage/id outage-id])))
+  (outage-history [_]
+    (->> (d/q '[:find ?s ?r :where [?e :outage-log/seq ?s] [?e :outage-log/record ?r]] (d/db conn))
+         (sort-by first)
+         (mapv (comp dec* second))))
+  (restoration-history [_]
+    (->> (d/q '[:find ?s ?r :where [?e :restoration/seq ?s] [?e :restoration/record ?r]] (d/db conn))
+         (sort-by first)
+         (mapv (comp dec* second))))
+  (next-outage-sequence [_ jurisdiction]
+    (or (d/q '[:find ?n . :in $ ?j
+              :where [?e :outage-sequence/jurisdiction ?j] [?e :outage-sequence/next ?n]]
+            (d/db conn) jurisdiction)
+        0))
+  (next-restoration-sequence [_ jurisdiction]
+    (or (d/q '[:find ?n . :in $ ?j
+              :where [?e :restoration-sequence/jurisdiction ?j] [?e :restoration-sequence/next ?n]]
+            (d/db conn) jurisdiction)
+        0))
+  (feeder-has-open-outage? [_ feeder-id]
+    (boolean (d/q '[:find ?e . :in $ ?fid
+                    :where [?e :outage/feeder-id ?fid] [?e :outage/open? true]]
+                  (d/db conn) feeder-id)))
+  (outage-open? [s outage-id]
+    (boolean (:open? (outage-of s outage-id))))
   (commit-record! [s {:keys [effect path value payload]}]
     (case effect
       :meter/upsert
@@ -322,24 +522,56 @@
                       {:disconnection-sequence/jurisdiction jurisdiction :disconnection-sequence/next next-n}
                       {:disconnection/seq (count (disconnection-history s)) :disconnection/record (enc (get result "record"))}])
         result)
+
+      ;; ---- additive: feeder/outage-event tracking ----
+      :feeder/upsert
+      (d/transact! conn [(feeder->tx value)])
+
+      :feeder/mark-outage-logged
+      (let [feeder-id (first path)
+            outage-id (:outage-id value)
+            cause-category (:cause-category value)
+            {:keys [result outage-record]} (log-outage-event! s feeder-id outage-id cause-category)
+            jurisdiction (:jurisdiction (feeder s feeder-id))
+            next-n (inc (next-outage-sequence s jurisdiction))]
+        (d/transact! conn
+                     [(outage->tx outage-record)
+                      {:outage-sequence/jurisdiction jurisdiction :outage-sequence/next next-n}
+                      {:outage-log/seq (count (outage-history s)) :outage-log/record (enc (get result "record"))}])
+        result)
+
+      :feeder/mark-restored
+      (let [outage-id (first path)
+            duration-minutes (:duration-minutes value)
+            {:keys [result outage-patch]} (report-restoration! s outage-id duration-minutes)
+            jurisdiction (:jurisdiction (outage-of s outage-id))
+            next-n (inc (next-restoration-sequence s jurisdiction))]
+        (d/transact! conn
+                     [(outage->tx (merge (outage-of s outage-id) outage-patch {:id outage-id}))
+                      {:restoration-sequence/jurisdiction jurisdiction :restoration-sequence/next next-n}
+                      {:restoration/seq (count (restoration-history s)) :restoration/record (enc (get result "record"))}])
+        result)
       nil)
     s)
   (append-ledger! [s fact]
     (d/transact! conn [{:ledger/seq (count (ledger s)) :ledger/fact (enc fact)}])
     fact)
   (with-meters [s meters]
-    (when (seq meters) (d/transact! conn (mapv meter->tx (vals meters)))) s))
+    (when (seq meters) (d/transact! conn (mapv meter->tx (vals meters)))) s)
+  (with-feeders [s feeders]
+    (when (seq feeders) (d/transact! conn (mapv feeder->tx (vals feeders)))) s))
 
 (defn datomic-store
   "A DatomicStore (langchain.db backend) seeded from `data`
-  ({:meters ..}); empty when omitted."
+  ({:meters .. :feeders ..}); empty when omitted."
   ([] (datomic-store {}))
-  ([{:keys [meters]}]
+  ([{:keys [meters feeders]}]
    (let [s (->DatomicStore (d/create-conn schema))]
-     (with-meters s meters))))
+     (with-meters s meters)
+     (with-feeders s feeders))))
 
 (defn datomic-seed-db
-  "A DatomicStore seeded with the demo meter set -- the Datomic-backed
-  analog of `seed-db`, used to prove protocol parity."
+  "A DatomicStore seeded with the demo meter+feeder set -- the
+  Datomic-backed analog of `seed-db`, used to prove protocol parity."
   []
   (datomic-store (demo-data)))
