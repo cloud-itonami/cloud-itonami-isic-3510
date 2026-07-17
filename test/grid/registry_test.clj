@@ -80,3 +80,45 @@
     (is (= 2 (count hist2)))
     (is (= "JPN-PRV-000000" (get-in hist2 [0 "record_id"])))
     (is (= "JPN-PRV-000001" (get-in hist2 [1 "record_id"])))))
+
+;; ----------------------------- register-outage-event (additive) -----------------------------
+
+(deftest outage-event-is-a-draft-not-a-real-outage-log
+  (let [result (r/register-outage-event "feeder-1" "outage-1" "JPN" :cause/equipment-failure 0)]
+    (is (nil? (get-in result ["certificate" "proof"])))
+    (is (= (get-in result ["certificate" "issued_by_registry"]) false))
+    (is (= (get-in result ["certificate" "status"]) "draft-unsigned"))))
+
+(deftest outage-event-assigns-outage-number
+  (let [result (r/register-outage-event "feeder-1" "outage-1" "JPN" :cause/equipment-failure 7)]
+    (is (= (get result "outage_number") "JPN-OUT-000007"))
+    (is (= (get-in result ["record" "feeder_id"]) "feeder-1"))
+    (is (= (get-in result ["record" "outage_id"]) "outage-1"))
+    (is (= (get-in result ["record" "kind"]) "outage-event-draft"))
+    (is (= (get-in result ["record" "immutable"]) true))))
+
+(deftest outage-event-validation-rules
+  (is (thrown? Exception (r/register-outage-event "" "outage-1" "JPN" :cause/unknown 0)))
+  (is (thrown? Exception (r/register-outage-event "feeder-1" "" "JPN" :cause/unknown 0)))
+  (is (thrown? Exception (r/register-outage-event "feeder-1" "outage-1" "" :cause/unknown 0)))
+  (is (thrown? Exception (r/register-outage-event "feeder-1" "outage-1" "JPN" :cause/unknown -1))))
+
+;; ----------------------------- register-outage-restoration (additive) -----------------------------
+
+(deftest outage-restoration-is-a-draft-not-a-real-restoration
+  (let [result (r/register-outage-restoration "outage-1" "JPN" 0)]
+    (is (nil? (get-in result ["certificate" "proof"])))
+    (is (= (get-in result ["certificate" "issued_by_registry"]) false))
+    (is (= (get-in result ["certificate" "status"]) "draft-unsigned"))))
+
+(deftest outage-restoration-assigns-restoration-number
+  (let [result (r/register-outage-restoration "outage-1" "JPN" 3)]
+    (is (= (get result "restoration_number") "JPN-RST-000003"))
+    (is (= (get-in result ["record" "outage_id"]) "outage-1"))
+    (is (= (get-in result ["record" "kind"]) "outage-restoration-draft"))
+    (is (= (get-in result ["record" "immutable"]) true))))
+
+(deftest outage-restoration-validation-rules
+  (is (thrown? Exception (r/register-outage-restoration "" "JPN" 0)))
+  (is (thrown? Exception (r/register-outage-restoration "outage-1" "" 0)))
+  (is (thrown? Exception (r/register-outage-restoration "outage-1" "JPN" -1))))

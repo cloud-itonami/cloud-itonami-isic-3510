@@ -51,11 +51,24 @@
   evidence checklist draft. `:no-spec?` injects the failure mode we
   must defend against: proposing a checklist for a jurisdiction with NO
   official spec-basis in `grid.facts` -- the Grid Transmission Governor
-  must reject this (never invent a jurisdiction's requirements)."
+  must reject this (never invent a jurisdiction's requirements).
+
+  Additive: `subject` may ALSO be a feeder-id (`grid.store/feeder`,
+  tried when `subject` does not resolve as a meter) -- in that case the
+  checklist is drafted against the SEPARATE `grid.facts/outage-
+  catalog`, not `grid.facts/catalog`. This lets `:actuation/log-
+  outage-event`'s own evidence-incomplete gate (`grid.governor`) reuse
+  the SAME `:identity/verify` op + `grid.store/identity-verification-
+  of` mechanism meters use, rather than inventing a second verify op --
+  a feeder-id and a meter-id never collide (see `grid.store` ns
+  docstring), so this is unambiguous. Behaviour for an actual meter-id
+  subject is UNCHANGED."
   [db {:keys [subject no-spec?]}]
   (let [m (store/meter db subject)
-        iso3 (if no-spec? "ATL" (:jurisdiction m))
-        sb (facts/spec-basis iso3)]
+        f (when-not m (store/feeder db subject))
+        outage? (some? f)
+        iso3 (if no-spec? "ATL" (:jurisdiction (or m f)))
+        sb (if outage? (facts/outage-spec-basis iso3) (facts/spec-basis iso3))]
     (if (nil? sb)
       {:summary    (str iso3 " の公式spec-basisが見つかりません")
        :rationale  "grid.facts に未登録の法域。要件を推測で作らない。"
@@ -154,6 +167,83 @@
      :stake      :actuation/disconnect-service
      :confidence (if m 0.9 0.3)}))
 
+;; ----------------------------- additive: feeder outage-event pair -----------------------------
+
+(defn- log-feeder-status
+  "Feeder/substation directory upsert -- the SAME low-stakes normalize-
+  only shape as `normalize-intake`, applied to a feeder instead of a
+  meter."
+  [_db {:keys [patch]}]
+  {:summary    (str "フィーダー状態記録更新: " (pr-str (keys patch)))
+   :rationale  "入力 patch の正規化のみ。新規事実の生成なし。"
+   :cites      (vec (keys patch))
+   :effect     :feeder/upsert
+   :value      patch
+   :stake      nil
+   :confidence 0.97})
+
+(defn- propose-outage-event
+  "Draft the OUTAGE-EVENT-LOGGING action for `subject` (a feeder-id).
+  ALWAYS `:stake :actuation/log-outage-event`. Looks up `grid.facts/
+  outage-catalog` (a SEPARATE, smaller catalog than `grid.facts/
+  catalog` -- see `grid.governor` ns docstring) via the feeder's own
+  recorded `:jurisdiction`; a feeder in a jurisdiction with no outage
+  spec-basis (e.g. `feeder-3`, ATL) drafts an empty-cites, low-
+  confidence proposal the Grid Transmission Governor must reject --
+  never invent a jurisdiction's outage-reporting requirements."
+  [db {:keys [subject outage-id cause-category]}]
+  (let [f (store/feeder db subject)
+        sb (facts/outage-spec-basis (:jurisdiction f))]
+    (if (nil? sb)
+      {:summary    (str (:jurisdiction f) " の公式outage-reporting spec-basisが見つかりません")
+       :rationale  "grid.facts/outage-catalog に未登録の法域。要件を推測で作らない。"
+       :cites      []
+       :effect     :feeder/mark-outage-logged
+       :value      {:feeder-id subject :outage-id outage-id :cause-category cause-category :spec-basis nil}
+       :stake      :actuation/log-outage-event
+       :confidence 0.3}
+      {:summary    (str subject " のoutageイベント記録提案 (cause=" cause-category ")")
+       :rationale  (str "公式ソース: " (:provenance sb) " / 法的根拠: " (:legal-basis sb))
+       :cites      [(:legal-basis sb) (:provenance sb)]
+       :effect     :feeder/mark-outage-logged
+       :value      {:feeder-id subject :outage-id outage-id :cause-category cause-category
+                    :spec-basis (:provenance sb) :legal-basis (:legal-basis sb)}
+       :stake      :actuation/log-outage-event
+       :confidence 0.9})))
+
+(defn- propose-restoration
+  "Draft the OUTAGE-RESTORATION-REPORTING action for `subject` (an
+  outage-id). ALWAYS `:stake :actuation/report-restoration`. Resolves
+  the outage's own feeder (via `grid.store/outage-of`) to look up the
+  SAME `grid.facts/outage-catalog` spec-basis `propose-outage-event`
+  used to open it."
+  [db {:keys [subject duration-minutes]}]
+  (let [o (store/outage-of db subject)
+        f (store/feeder db (:feeder-id o))
+        sb (facts/outage-spec-basis (:jurisdiction f))]
+    {:summary    (str subject " の復旧報告提案 (duration-minutes=" duration-minutes ")")
+     :rationale  (if sb (str "公式ソース: " (:provenance sb)) "outageイベント/フィーダー記録が見つかりません")
+     :cites      (if sb [(:legal-basis sb) (:provenance sb)] [])
+     :effect     :feeder/mark-restored
+     :value      {:outage-id subject :duration-minutes duration-minutes :spec-basis (when sb (:provenance sb))}
+     :stake      :actuation/report-restoration
+     :confidence (if sb 0.9 0.3)}))
+
+(defn- report-supply-status
+  "Draft a routine demand-side SUPPLY-STATUS report for `subject` (a
+  feeder-id) -- NOT an actuation (`:stake nil`), the same low-stakes
+  informational shape as `screen-dispute`'s clean branch."
+  [db {:keys [subject]}]
+  (let [f (store/feeder db subject)]
+    {:summary    (str subject " の需要側供給状況報告"
+                      (when f (str " (status=" (:status f) ")")))
+     :rationale  (if f "フィーダー自身の記録済みstatusを報告" "フィーダー記録が見つかりません")
+     :cites      (if f [subject] [])
+     :effect     :supply-status/report
+     :value      {:feeder-id subject :status (:status f)}
+     :stake      nil
+     :confidence (if f 0.9 0.3)}))
+
 (defn infer
   "Route a request to the right proposal generator.
   request: {:op kw :subject id ...op-specific...}"
@@ -164,6 +254,10 @@
     :dispute/screen                  (screen-dispute db request)
     :actuation/provision-service     (propose-service-provisioning db request)
     :actuation/disconnect-service    (propose-service-disconnection db request)
+    :feeder/log-status               (log-feeder-status db request)
+    :actuation/log-outage-event      (propose-outage-event db request)
+    :actuation/report-restoration    (propose-restoration db request)
+    :supply/report-status            (report-supply-status db request)
     {:summary "未対応の操作" :rationale (str op) :cites []
      :effect :noop :stake nil :confidence 0.0}))
 
@@ -194,6 +288,10 @@
     :dispute/screen                  {:meter (store/meter st subject)}
     :actuation/provision-service     {:meter (store/meter st subject)}
     :actuation/disconnect-service    {:meter (store/meter st subject)}
+    :feeder/log-status               {:feeder (store/feeder st subject)}
+    :actuation/log-outage-event      {:feeder (store/feeder st subject)}
+    :actuation/report-restoration    {:outage (store/outage-of st subject)}
+    :supply/report-status            {:feeder (store/feeder st subject)}
     {:meter (store/meter st subject)}))
 
 (defn- parse-proposal

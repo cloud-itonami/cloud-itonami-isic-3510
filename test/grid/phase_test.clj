@@ -44,3 +44,43 @@
 
 (deftest gate-holds-a-write-disabled-in-this-phase
   (is (= :hold (:disposition (phase/gate 0 {:op :meter/intake} :commit)))))
+
+;; ───────────── Additive: feeder outage-event logging + restoration reporting ─────────────
+
+(deftest outage-event-and-restoration-never-auto-at-any-phase
+  (testing "structural invariant: no phase, now or in the future entries, auto-commits an outage-event log or a restoration report -- the SAME posture :actuation/disconnect-service has"
+    (doseq [[n {:keys [auto]}] phase/phases]
+      (is (not (contains? auto :actuation/log-outage-event))
+          (str "phase " n " must not auto-commit :actuation/log-outage-event"))
+      (is (not (contains? auto :actuation/report-restoration))
+          (str "phase " n " must not auto-commit :actuation/report-restoration")))))
+
+(deftest feeder-log-status-and-supply-report-status-never-auto-at-any-phase
+  (testing "routine, non-actuation, but still never auto-eligible in this V1 -- the SAME posture :identity/verify/:dispute/screen have"
+    (doseq [[n {:keys [auto]}] phase/phases]
+      (is (not (contains? auto :feeder/log-status))
+          (str "phase " n " must not auto-commit :feeder/log-status"))
+      (is (not (contains? auto :supply/report-status))
+          (str "phase " n " must not auto-commit :supply/report-status")))))
+
+(deftest phase-3-auto-set-is-unchanged-by-the-additive-ops
+  (testing "adding the feeder outage-event pair to write-ops/phase-3 :writes does NOT expand phase 3's :auto set"
+    (is (= #{:meter/intake :actuation/provision-service} (:auto (get phase/phases 3))))))
+
+(deftest outage-ops-disabled-before-phase-3
+  (testing "the feeder outage-event pair, like the meter actuation pair, is only writable from phase 3 onward"
+    (is (not (contains? (:writes (get phase/phases 1)) :actuation/log-outage-event)))
+    (is (not (contains? (:writes (get phase/phases 2)) :actuation/log-outage-event)))
+    (is (contains? (:writes (get phase/phases 3)) :actuation/log-outage-event))
+    (is (contains? (:writes (get phase/phases 3)) :actuation/report-restoration))))
+
+(deftest feeder-log-status-enabled-from-phase-1
+  (is (contains? (:writes (get phase/phases 1)) :feeder/log-status))
+  (is (contains? (:writes (get phase/phases 2)) :feeder/log-status)))
+
+(deftest gate-escalates-a-clean-outage-event-log
+  (is (= :escalate (:disposition (phase/gate 3 {:op :actuation/log-outage-event} :commit)))))
+
+(deftest gate-holds-outage-event-log-before-phase-3
+  (is (= :hold (:disposition (phase/gate 1 {:op :actuation/log-outage-event} :commit))))
+  (is (= :phase-disabled (:reason (phase/gate 1 {:op :actuation/log-outage-event} :commit)))))

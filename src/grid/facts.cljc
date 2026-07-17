@@ -105,3 +105,55 @@
 
 (defn evidence-checklist [iso3]
   (:required-evidence (spec-basis iso3) []))
+
+;; ───────────── Outage-event / restoration reporting (additive) ─────────────
+;;
+;; A SEPARATE, smaller per-jurisdiction citation table for feeder/
+;; substation outage-event logging and restoration reporting -- a
+;; genuinely different regulatory hook than `catalog` above's customer-
+;; identity/meter-registration/interconnection/disconnection evidence
+;; set (a feeder is network infrastructure, not a customer meter --
+;; there is no "customer identity" to verify for an outage event). Same
+;; honest-coverage discipline as `catalog`: a jurisdiction absent from
+;; `outage-catalog` has NO spec-basis for outage-event reporting, full
+;; stop, even if it DOES have an entry in `catalog` above (e.g. "DEU"
+;; is covered for meter provisioning/disconnection but deliberately
+;; has no verified outage-reporting-specific citation here -- never
+;; fabricated to make coverage look bigger).
+
+(def outage-catalog
+  "iso3 -> outage-event/restoration-reporting requirement map."
+  {"JPN" {:owner-authority "経済産業省 資源エネルギー庁 (ANRE, Agency for Natural Resources and Energy, METI)"
+          :legal-basis "電気事業法 (Electricity Business Act, Act No. 170 of 1964) 第2条第1項第8号"
+          :national-spec "一般送配電事業者の託送供給義務の履行状況としての、供給区域内outage事象の記録"
+          :provenance "https://www.enecho.meti.go.jp/category/electricity_and_gas/electric/"
+          :required-evidence ["outage-event-log"]}
+   "USA" {:owner-authority "North American Electric Reliability Corporation (NERC), under FERC oversight"
+          :legal-basis "NERC Reliability Standard EOP-004 (Event Reporting)"
+          :national-spec "Bulk Electric System event reporting to the Electric Reliability Organization within 24 hours of recognition of an event-type threshold, or by the Responsible Entity's next business day"
+          :provenance "https://www.nerc.com/pa/stand/reliability%20standards/eop-004-4.pdf"
+          :required-evidence ["eop-004-event-report"]
+          :scope-note "Federal Bulk-Electric-System-level event reporting only -- distribution-level (non-BES) outage-reporting requirements are State Public Utility Commission-regulated and honestly OUT OF SCOPE for this catalog."}
+   "GBR" {:owner-authority "Office of Gas and Electricity Markets (Ofgem)"
+          :legal-basis "The Electricity (Standards of Performance) Regulations 2015 (SI 2015/699)"
+          :national-spec "Distribution supply-restoration time targets: 12h under normal weather, up to 24h where high-voltage fault incidence reaches at least 8x the normal rate within a rolling 24h period (the lightning-event threshold), up to 48h under severe/exceptional weather"
+          :provenance "https://www.legislation.gov.uk/uksi/2015/699/body"
+          :required-evidence ["restoration-time-log"]}})
+
+(defn outage-spec-basis
+  "The jurisdiction's OUTAGE-EVENT-REPORTING requirement map, or nil --
+  nil means NO spec-basis for outage-event logging/restoration
+  reporting specifically, even if `spec-basis` above has an entry for
+  the same iso3 (a DIFFERENT catalog, see ns docstring)."
+  [iso3]
+  (get outage-catalog iso3))
+
+(defn outage-evidence-satisfied?
+  "Does `submitted` satisfy every outage-event-reporting evidence item
+  listed for `iso3` in `outage-catalog`? Missing outage spec-basis ->
+  never satisfied."
+  [iso3 submitted]
+  (when-let [{:keys [required-evidence]} (outage-spec-basis iso3)]
+    (let [need (count required-evidence)
+          have (count (filter (set submitted) required-evidence))]
+      (= need have))))

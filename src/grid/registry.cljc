@@ -142,3 +142,69 @@
 
 (defn append [history result]
   (conj (vec history) (get result "record")))
+
+;; ----------------------------- outage-event / restoration (additive) -----------------------------
+;;
+;; Pure-function outage-event-logging + restoration-reporting record
+;; construction -- SAME append-only draft-record discipline as
+;; `register-service-provisioning`/`register-service-disconnection`
+;; above, applied to a DIFFERENT entity pair: (feeder, outage-event)
+;; rather than (meter, service). `grid.governor` independently
+;; re-verifies (via `grid.store/feeder-has-open-outage?`/`grid.store/
+;; outage-open?`) that a feeder does not already have an outage open
+;; before `:actuation/log-outage-event` commits, and that a
+;; `:actuation/report-restoration` proposal's outage-id actually
+;; resolves to a currently-open outage, before this is ever allowed to
+;; commit -- the SAME double-actuation-guard shape
+;; `meter-already-provisioned?`/`meter-already-disconnected?` already
+;; establish, never a `:status` value.
+
+(defn register-outage-event
+  "Validate + construct the OUTAGE-EVENT-LOGGING draft -- the record a
+  utility's own outage-management system would keep when an outage on
+  a feeder is first detected/reported. Pure function -- does not touch
+  any real feeder, breaker or SCADA system; it builds the RECORD a
+  utility would keep."
+  [feeder-id outage-id jurisdiction cause-category sequence]
+  (when-not (and feeder-id (not= feeder-id ""))
+    (throw (ex-info "outage-event: feeder_id required" {})))
+  (when-not (and outage-id (not= outage-id ""))
+    (throw (ex-info "outage-event: outage_id required" {})))
+  (when-not (and jurisdiction (not= jurisdiction ""))
+    (throw (ex-info "outage-event: jurisdiction required" {})))
+  (when (< sequence 0)
+    (throw (ex-info "outage-event: sequence must be >= 0" {})))
+  (let [outage-number (str (str/upper-case jurisdiction) "-OUT-" (zero-pad sequence 6))
+        record {"record_id" outage-number
+                "kind" "outage-event-draft"
+                "feeder_id" feeder-id
+                "outage_id" outage-id
+                "cause_category" (str cause-category)
+                "jurisdiction" jurisdiction
+                "immutable" true}]
+    {"record" record "outage_number" outage-number
+     "certificate" (unsigned-certificate "OutageEvent" outage-number outage-number)}))
+
+(defn register-outage-restoration
+  "Validate + construct the OUTAGE-RESTORATION-REPORTING draft -- the
+  record a utility's own outage-management system would keep when a
+  previously-logged outage is reported restored. Pure function -- does
+  not touch any real feeder, breaker or SCADA system; it builds the
+  RECORD a utility would keep. `grid.governor` independently
+  re-verifies that `outage-id` actually resolves to a currently-open
+  outage before this is ever allowed to commit -- see ns docstring."
+  [outage-id jurisdiction sequence]
+  (when-not (and outage-id (not= outage-id ""))
+    (throw (ex-info "outage-restoration: outage_id required" {})))
+  (when-not (and jurisdiction (not= jurisdiction ""))
+    (throw (ex-info "outage-restoration: jurisdiction required" {})))
+  (when (< sequence 0)
+    (throw (ex-info "outage-restoration: sequence must be >= 0" {})))
+  (let [restoration-number (str (str/upper-case jurisdiction) "-RST-" (zero-pad sequence 6))
+        record {"record_id" restoration-number
+                "kind" "outage-restoration-draft"
+                "outage_id" outage-id
+                "jurisdiction" jurisdiction
+                "immutable" true}]
+    {"record" record "restoration_number" restoration-number
+     "certificate" (unsigned-certificate "OutageRestoration" restoration-number restoration-number)}))

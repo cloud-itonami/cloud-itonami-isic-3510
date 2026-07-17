@@ -177,3 +177,116 @@
       (exec-op actor "b" {:op :identity/verify :subject "meter-1" :no-spec? true} operator)
       (is (= 2 (count (store/ledger db)))
           "one commit + one hold, both recorded"))))
+
+;; ───────────── Additive: feeder outage-event logging + restoration reporting ─────────────
+;;
+;; SEPARATE dual-actuation pair on a SEPARATE entity (a feeder, not a
+;; meter) -- see `grid.governor`/`grid.phase` ns docstrings. Upstream
+;; half of the entirely optional isic-3510 <-> jsic-4721 cross-actor
+;; contract (superproject ADR-2608510000).
+
+(defn- verify-feeder!
+  "Walks a FEEDER-id through :identity/verify -> approve, the SAME
+  `:identity/verify` op meters use (see `grid.gridadvisor/verify-
+  identity`'s additive feeder-id resolution)."
+  [actor tid-prefix feeder-id]
+  (exec-op actor (str tid-prefix "-verify") {:op :identity/verify :subject feeder-id} operator)
+  (approve! actor (str tid-prefix "-verify")))
+
+(deftest outage-event-log-without-verification-is-held
+  (testing "actuation/log-outage-event before any feeder verification -> HOLD (evidence incomplete)"
+    (let [[db actor] (fresh)
+          res (exec-op actor "o1" {:op :actuation/log-outage-event :subject "feeder-1"
+                                   :outage-id "outage-1" :cause-category :cause/equipment-failure} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:evidence-incomplete} (-> (store/ledger db) first :basis))))))
+
+(deftest outage-event-log-clean-always-escalates-then-human-decides
+  (testing "a clean, verified outage-event log ALWAYS interrupts for human approval -- never auto, at any phase"
+    (let [[db actor] (fresh)
+          _ (verify-feeder! actor "o2pre" "feeder-1")
+          r1 (exec-op actor "o2" {:op :actuation/log-outage-event :subject "feeder-1"
+                                  :outage-id "outage-1" :cause-category :cause/equipment-failure} operator)]
+      (is (= :interrupted (:status r1)) "pauses for human approval, unconditionally high-stakes")
+      (testing "approve -> commit, outage-event record drafted, guard opens"
+        (let [r2 (approve! actor "o2")]
+          (is (= :commit (get-in r2 [:state :disposition])))
+          (is (true? (store/feeder-has-open-outage? db "feeder-1")))
+          (is (true? (store/outage-open? db "outage-1")))
+          (is (= 1 (count (store/outage-history db))) "one draft outage-event record"))))))
+
+(deftest outage-event-no-outage-spec-basis-is-held
+  (testing "a feeder in a jurisdiction with no OUTAGE-reporting spec-basis (feeder-3, ATL) -> HOLD, never reaches a human, even though ATL is a DIFFERENT failure mode than a wholly-unknown jurisdiction"
+    (let [[db actor] (fresh)
+          _ (verify-feeder! actor "o3pre" "feeder-3")
+          res (exec-op actor "o3" {:op :actuation/log-outage-event :subject "feeder-3"
+                                   :outage-id "outage-3" :cause-category :cause/equipment-failure} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:no-spec-basis :evidence-incomplete} (-> (store/ledger db) last :basis))))))
+
+(deftest already-open-outage-is-held-and-does-not-open-a-second-outage
+  (testing "logging a SECOND outage on a feeder that already has one open -> HOLD on the second attempt"
+    (let [[db actor] (fresh)
+          _ (verify-feeder! actor "o4pre" "feeder-1")
+          _ (exec-op actor "o4a" {:op :actuation/log-outage-event :subject "feeder-1"
+                                  :outage-id "outage-1" :cause-category :cause/equipment-failure} operator)
+          _ (approve! actor "o4a")
+          res (exec-op actor "o4" {:op :actuation/log-outage-event :subject "feeder-1"
+                                   :outage-id "outage-2" :cause-category :cause/severe-weather} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:already-open-outage} (-> (store/ledger db) last :basis)))
+      (is (= 1 (count (store/outage-history db))) "still only the one earlier outage-event"))))
+
+(deftest restoration-without-open-outage-nonexistent-id-is-held
+  (testing "reporting restoration for an outage-id that was never logged -> HOLD"
+    (let [[db actor] (fresh)
+          res (exec-op actor "o5" {:op :actuation/report-restoration :subject "outage-nonexistent"
+                                   :duration-minutes 60} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:restoration-without-open-outage} (-> (store/ledger db) last :basis))))))
+
+(deftest restoration-clean-always-escalates-then-closes-the-guard
+  (testing "a clean restoration report for an open outage ALWAYS interrupts for human approval, then closes the guard on approval"
+    (let [[db actor] (fresh)
+          _ (verify-feeder! actor "o6pre" "feeder-1")
+          _ (exec-op actor "o6a" {:op :actuation/log-outage-event :subject "feeder-1"
+                                  :outage-id "outage-1" :cause-category :cause/equipment-failure} operator)
+          _ (approve! actor "o6a")
+          r1 (exec-op actor "o6" {:op :actuation/report-restoration :subject "outage-1"
+                                  :duration-minutes 75} operator)]
+      (is (= :interrupted (:status r1)) "pauses for human approval, unconditionally high-stakes")
+      (testing "approve -> commit, restoration record drafted, guard closes"
+        (let [r2 (approve! actor "o6")]
+          (is (= :commit (get-in r2 [:state :disposition])))
+          (is (false? (store/feeder-has-open-outage? db "feeder-1")))
+          (is (false? (store/outage-open? db "outage-1")))
+          (is (= 75 (:grid-outage/duration-minutes (store/outage-of db "outage-1"))))
+          (is (= 1 (count (store/restoration-history db))) "one draft restoration record"))))))
+
+(deftest restoration-double-report-is-held
+  (testing "reporting restoration TWICE for the same outage-id -> HOLD on the second attempt (double-actuation guard)"
+    (let [[db actor] (fresh)
+          _ (verify-feeder! actor "o7pre" "feeder-1")
+          _ (exec-op actor "o7a" {:op :actuation/log-outage-event :subject "feeder-1"
+                                  :outage-id "outage-1" :cause-category :cause/equipment-failure} operator)
+          _ (approve! actor "o7a")
+          _ (exec-op actor "o7b" {:op :actuation/report-restoration :subject "outage-1" :duration-minutes 75} operator)
+          _ (approve! actor "o7b")
+          res (exec-op actor "o7" {:op :actuation/report-restoration :subject "outage-1" :duration-minutes 90} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:restoration-without-open-outage} (-> (store/ledger db) last :basis)))
+      (is (= 1 (count (store/restoration-history db))) "still only the one earlier restoration"))))
+
+(deftest feeder-log-status-and-supply-report-status-always-need-approval
+  (testing "routine, non-actuation feeder ops still always need approval in this V1 (never auto, see grid.phase)"
+    (let [[db actor] (fresh)
+          res (exec-op actor "o8" {:op :feeder/log-status :subject "feeder-1"
+                                   :patch {:id "feeder-1" :status :maintenance}} operator)]
+      (is (= :interrupted (:status res)))
+      (let [r2 (approve! actor "o8")]
+        (is (= :commit (get-in r2 [:state :disposition])))
+        (is (= :maintenance (:status (store/feeder db "feeder-1"))))))
+    (let [[_db actor] (fresh)
+          res (exec-op actor "o9" {:op :supply/report-status :subject "feeder-1"} operator)]
+      (is (= :interrupted (:status res)))
+      (is (= :commit (get-in (approve! actor "o9") [:state :disposition]))))))

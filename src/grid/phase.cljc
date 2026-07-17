@@ -36,21 +36,41 @@
   set enforces the same invariant independently -- two layers, not one,
   agree on this. `:identity/verify`/`:dispute/screen` are likewise
   never auto-eligible, at any phase -- the same posture every sibling's
-  screening/verification op has.")
+  screening/verification op has.
+
+  ── Additive: feeder outage-event logging + restoration reporting ──
+
+  `:feeder/log-status` (phase 1+, like `:meter/intake`) and `:supply/
+  report-status` (phase 2+, like `:identity/verify`/`:dispute/screen`)
+  are routine, non-actuation writes -- enabled early, but like
+  `:identity/verify`/`:dispute/screen` deliberately NEVER added to any
+  phase's `:auto` set either (this V1 always routes them to human
+  approval once enabled, a stricter posture than `:meter/intake`'s;
+  phase 3's `:auto` set is UNCHANGED by this addition). `:actuation/
+  log-outage-event`/`:actuation/report-restoration` (the feeder
+  outage-event pair -- see `grid.governor` ns docstring) join
+  `write-ops`/phase 3's `:writes` the SAME way `:actuation/disconnect-
+  service` does -- available only from phase 3, and (like
+  `:actuation/disconnect-service`) deliberately ABSENT from every
+  phase's `:auto` set, including phase 3. Do not add them there.")
 
 (def read-ops  #{})
 (def write-ops #{:meter/intake :identity/verify :dispute/screen
-                 :actuation/provision-service :actuation/disconnect-service})
+                 :actuation/provision-service :actuation/disconnect-service
+                 :feeder/log-status :actuation/log-outage-event
+                 :actuation/report-restoration :supply/report-status})
 
-;; NOTE the invariant: `:actuation/disconnect-service` is a member of
-;; `write-ops` (governor-gated like any write) but is NEVER a member of
-;; any phase's `:auto` set below. Do not add it there.
+;; NOTE the invariant: `:actuation/disconnect-service` (and, ADDITIVE,
+;; `:actuation/log-outage-event`/`:actuation/report-restoration`) are
+;; members of `write-ops` (governor-gated like any write) but are NEVER
+;; members of any phase's `:auto` set below. Do not add them there.
 (def phases
   "phase -> {:label .. :writes <ops allowed to write> :auto <ops allowed to
   auto-commit when governor-clean>}."
   {0 {:label "read-only"        :writes #{}                                                              :auto #{}}
-   1 {:label "assisted-intake"  :writes #{:meter/intake}                                                  :auto #{}}
-   2 {:label "assisted-verify"  :writes #{:meter/intake :identity/verify :dispute/screen}                 :auto #{}}
+   1 {:label "assisted-intake"  :writes #{:meter/intake :feeder/log-status}                               :auto #{}}
+   2 {:label "assisted-verify"  :writes #{:meter/intake :identity/verify :dispute/screen
+                                          :feeder/log-status :supply/report-status}                        :auto #{}}
    3 {:label "supervised-auto"  :writes write-ops
       :auto #{:meter/intake :actuation/provision-service}}})
 
