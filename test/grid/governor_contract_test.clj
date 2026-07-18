@@ -328,3 +328,80 @@
                      :patch {:id "feeder-2" :power-supply/id "ps-smr-1"}}
                     (assoc operator :phase 0))]
       (is (= :hold (get-in res [:state :disposition]))))))
+
+;; ───────────── Additive: feeder <-> downstream power-metering reconciliation ─────────────
+;;
+;; The upstream half of the entirely optional, no-shared-code
+;; isic-3510 <-> jsic-4721 `:power-metering` cross-actor contract
+;; (superproject ADR-2800001000) -- a SEPARATE contract from the
+;; outage-event one above, for steady-state consumption reconciliation.
+
+(deftest metering-reading-clean-always-escalates-then-logs-the-reading
+  (testing "a routine reading, never auto -- see grid.phase (SAME posture as :supply/report-status)"
+    (let [[db actor] (fresh)
+          res (exec-op actor "m1"
+                    {:op :feeder/log-metering-reading :subject "feeder-1"
+                     :client-actor "cloud-itonami-jsic-4721"
+                     :period-start-iso "2026-07-01T00:00:00Z"
+                     :period-end-iso "2026-07-08T00:00:00Z"
+                     :consumed-kwh 1234.5}
+                    operator)]
+      (is (= :interrupted (:status res)))
+      (let [r2 (approve! actor "m1")
+            f (store/feeder db "feeder-1")]
+        (is (= :commit (get-in r2 [:state :disposition])))
+        (is (= "feeder-1-MTR-2026-07-01T00:00:00Z" (:power-metering/id f)))
+        (is (= "cloud-itonami-jsic-4721" (:power-metering/client-actor f)))
+        (is (= 1234.5 (:power-metering/consumed-kwh f)))
+        (is (= "SS-01" (:substation-id f)) "unrelated pre-existing field preserved")))))
+
+(deftest metering-reading-unknown-feeder-is-held
+  (testing "a metering reading for a feeder-id this actor does not recognize -> HOLD, never reaches a human"
+    (let [[db actor] (fresh)
+          res (exec-op actor "m2"
+                    {:op :feeder/log-metering-reading :subject "feeder-nonexistent"
+                     :client-actor "cloud-itonami-jsic-4721"
+                     :period-start-iso "2026-07-01T00:00:00Z"
+                     :period-end-iso "2026-07-08T00:00:00Z"
+                     :consumed-kwh 1234.5}
+                    operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:unknown-feeder} (-> (store/ledger db) first :basis))))))
+
+(deftest metering-reading-invalid-period-is-held
+  (testing "period-end-iso not strictly after period-start-iso -> HOLD, never reaches a human"
+    (let [[db actor] (fresh)
+          res (exec-op actor "m3"
+                    {:op :feeder/log-metering-reading :subject "feeder-1"
+                     :client-actor "cloud-itonami-jsic-4721"
+                     :period-start-iso "2026-07-08T00:00:00Z"
+                     :period-end-iso "2026-07-01T00:00:00Z"
+                     :consumed-kwh 1234.5}
+                    operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:invalid-metering-period} (-> (store/ledger db) first :basis))))))
+
+(deftest metering-reading-negative-kwh-is-held
+  (testing "a negative :consumed-kwh can never be a real physical measurement -> HOLD"
+    (let [[db actor] (fresh)
+          res (exec-op actor "m4"
+                    {:op :feeder/log-metering-reading :subject "feeder-1"
+                     :client-actor "cloud-itonami-jsic-4721"
+                     :period-start-iso "2026-07-01T00:00:00Z"
+                     :period-end-iso "2026-07-08T00:00:00Z"
+                     :consumed-kwh -5}
+                    operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:invalid-consumed-kwh} (-> (store/ledger db) first :basis))))))
+
+(deftest metering-reading-disabled-before-phase-2
+  (testing "phase-disabled, not a governor hold, before the op is enabled"
+    (let [[_db actor] (fresh)
+          res (exec-op actor "m5"
+                    {:op :feeder/log-metering-reading :subject "feeder-1"
+                     :client-actor "cloud-itonami-jsic-4721"
+                     :period-start-iso "2026-07-01T00:00:00Z"
+                     :period-end-iso "2026-07-08T00:00:00Z"
+                     :consumed-kwh 1234.5}
+                    (assoc operator :phase 1))]
+      (is (= :hold (get-in res [:state :disposition]))))))

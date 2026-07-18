@@ -151,7 +151,21 @@
   compressor power-outage duration and MAY independently cross-check
   it against this actor's record) -- see superproject ADR-2608510000.
   This governor has no code path that calls jsic-4721 (or any other
-  downstream consumer); it works standalone."
+  downstream consumer); it works standalone.
+
+  ── Additive: feeder <-> downstream power-metering reconciliation ──
+
+  `:feeder/log-metering-reading` (feeder-id subject) is a SEPARATE,
+  entirely optional, no-shared-code cross-actor contract on the SAME
+  (isic-3510, jsic-4721) pair as the outage-event contract above, but
+  for STEADY-STATE consumption rather than outage events: this actor
+  logs a `:power-metering/*` reading (period + `:consumed-kwh`) a
+  downstream physical-operations client MAY independently reconcile
+  against ITS OWN registered equipment-assets' rated power draw (see
+  superproject ADR-2800001000). `metering-reading-invalid-violations`
+  is a NEW HARD check (feeder existence, period ordering, non-negative
+  kWh) -- this governor still has no code path that calls the
+  downstream client; it works standalone either way."
   (:require [grid.facts :as facts]
             [grid.registry :as registry]
             [grid.store :as store]))
@@ -336,6 +350,51 @@
       [{:rule :restoration-without-open-outage
         :detail (str subject " は現在未復旧(open)状態のoutageイベントとして見つからない(存在しないか既に復旧済み)")}])))
 
+(defn- metering-reading-invalid-violations
+  "For `:feeder/log-metering-reading`, INDEPENDENTLY recompute three
+  ground-truth checks against the proposal's own `:power-metering/*`
+  value (never trust the advisor's self-reported confidence alone),
+  the SAME 'advisor proposes, governor independently re-verifies'
+  discipline every other HARD check in this ns uses:
+
+    1. the feeder itself must exist in the store (`grid.store/feeder`)
+       -- a metering reading for an unknown feeder-ref is never
+       proposable for real infrastructure this actor does not
+       recognize.
+    2. the reading's own period must be chronologically well-formed
+       (`:power-metering/period-end-iso` strictly after `:power-
+       metering/period-start-iso`) -- ISO-8601 UTC timestamps in
+       canonical zero-padded form compare correctly lexicographically,
+       the SAME trick `grid.registry`'s zero-padded sequence numbers
+       rely on for ordering, so no date-library dependency is needed
+       here either.
+    3. `:power-metering/consumed-kwh` must be a non-negative number --
+       a negative or non-numeric reading can never be a real physical
+       measurement.
+
+  ALWAYS a HARD, un-overridable hold -- a malformed or fabricated
+  metering reading must never reach a downstream client (e.g.
+  cloud-itonami-jsic-4721) for reconciliation. See superproject
+  ADR-2800001000 for the shared `:power-metering/*` wire shape."
+  [{:keys [op subject]} proposal st]
+  (when (= op :feeder/log-metering-reading)
+    (let [f (store/feeder st subject)
+          v (:value proposal)
+          start (:power-metering/period-start-iso v)
+          end (:power-metering/period-end-iso v)
+          kwh (:power-metering/consumed-kwh v)]
+      (into []
+            (remove nil?
+                    [(when (nil? f)
+                       {:rule :unknown-feeder
+                        :detail (str subject " は登録済みフィーダーとして見つからない")})
+                     (when-not (and (string? start) (string? end) (pos? (compare end start)))
+                       {:rule :invalid-metering-period
+                        :detail (str "計量期間の終了(" end ")が開始(" start ")より後になっていない")})
+                     (when-not (and (number? kwh) (>= kwh 0))
+                       {:rule :invalid-consumed-kwh
+                        :detail (str ":consumed-kwh(" kwh ")が0以上の数値でない")})])))))
+
 (defn- capacity-over-threshold-violations
   "For `:actuation/provision-service`, INDEPENDENTLY recompute whether
   the meter's own recorded `:capacity-kw` exceeds `grid.registry/
@@ -363,7 +422,8 @@
                            (already-provisioned-violations request st)
                            (already-disconnected-violations request st)
                            (already-outage-open-violations request st)
-                           (restoration-without-open-outage-violations request st)))
+                           (restoration-without-open-outage-violations request st)
+                           (metering-reading-invalid-violations request proposal st)))
         conf (:confidence proposal 0.0)
         low? (< conf confidence-floor)
         over-threshold? (capacity-over-threshold-violations request st)

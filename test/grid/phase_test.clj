@@ -109,3 +109,28 @@
 (deftest gate-holds-power-supply-registration-before-phase-1
   (is (= :hold (:disposition (phase/gate 0 {:op :feeder/register-power-supply} :commit))))
   (is (= :phase-disabled (:reason (phase/gate 0 {:op :feeder/register-power-supply} :commit)))))
+
+;; ───────────── Additive: feeder <-> downstream power-metering reconciliation ─────────────
+
+(deftest metering-reading-enabled-from-phase-2
+  (testing "the SAME early-enabled-but-not-phase-1 posture as :supply/report-status"
+    (is (not (contains? (:writes (get phase/phases 1)) :feeder/log-metering-reading)))
+    (is (contains? (:writes (get phase/phases 2)) :feeder/log-metering-reading))
+    (is (contains? (:writes (get phase/phases 3)) :feeder/log-metering-reading))))
+
+(deftest metering-reading-never-auto-at-any-phase
+  (testing "a routine reading, but still never auto-eligible in this V1 -- the SAME posture :supply/report-status has"
+    (doseq [[n {:keys [auto]}] phase/phases]
+      (is (not (contains? auto :feeder/log-metering-reading))
+          (str "phase " n " must not auto-commit :feeder/log-metering-reading")))))
+
+(deftest phase-3-auto-set-is-unchanged-by-metering-reading-addition
+  (testing "adding :feeder/log-metering-reading to write-ops/phase-writes does NOT expand phase 3's :auto set"
+    (is (= #{:meter/intake :actuation/provision-service} (:auto (get phase/phases 3))))))
+
+(deftest gate-escalates-a-clean-metering-reading
+  (is (= :escalate (:disposition (phase/gate 3 {:op :feeder/log-metering-reading} :commit)))))
+
+(deftest gate-holds-metering-reading-before-phase-2
+  (is (= :hold (:disposition (phase/gate 1 {:op :feeder/log-metering-reading} :commit))))
+  (is (= :phase-disabled (:reason (phase/gate 1 {:op :feeder/log-metering-reading} :commit)))))
