@@ -333,7 +333,7 @@
 ;;
 ;; The upstream half of the entirely optional, no-shared-code
 ;; isic-3510 <-> jsic-4721 `:power-metering` cross-actor contract
-;; (superproject ADR-2800001000) -- a SEPARATE contract from the
+;; (superproject ADR-2800001100) -- a SEPARATE contract from the
 ;; outage-event one above, for steady-state consumption reconciliation.
 
 (deftest metering-reading-clean-always-escalates-then-logs-the-reading

@@ -69,7 +69,7 @@
   enabled early, never auto' posture as `:supply/report-status`) logs
   a metering reading a downstream client may independently reconcile
   -- see `grid.gridadvisor`/`grid.governor`/superproject
-  ADR-2800001000. Placed at phase 2 rather than phase 1 (unlike the
+  ADR-2800001100. Placed at phase 2 rather than phase 1 (unlike the
   directory-fact `:feeder/register-power-supply`) because it is closer
   in kind to `:supply/report-status`'s own routine-reporting posture
   than to a one-time administrative linkage; phase 3's `:auto` set is
