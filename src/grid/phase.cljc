@@ -52,13 +52,23 @@
   `write-ops`/phase 3's `:writes` the SAME way `:actuation/disconnect-
   service` does -- available only from phase 3, and (like
   `:actuation/disconnect-service`) deliberately ABSENT from every
-  phase's `:auto` set, including phase 3. Do not add them there.")
+  phase's `:auto` set, including phase 3. Do not add them there.
+
+  ── Additive: feeder <-> generator power-supply linkage ──
+
+  `:feeder/register-power-supply` (phase 1+, the SAME early-enabled,
+  never-auto posture as `:feeder/log-status`) registers WHICH upstream
+  generation actor (`cloud-itonami-isic-3511`/`-3512`) supplies a
+  feeder -- see `grid.gridadvisor`/superproject ADR-2800000500. A
+  directory fact about an already-agreed arrangement, not a dispatch
+  decision; phase 3's `:auto` set is UNCHANGED by this addition.")
 
 (def read-ops  #{})
 (def write-ops #{:meter/intake :identity/verify :dispute/screen
                  :actuation/provision-service :actuation/disconnect-service
                  :feeder/log-status :actuation/log-outage-event
-                 :actuation/report-restoration :supply/report-status})
+                 :actuation/report-restoration :supply/report-status
+                 :feeder/register-power-supply})
 
 ;; NOTE the invariant: `:actuation/disconnect-service` (and, ADDITIVE,
 ;; `:actuation/log-outage-event`/`:actuation/report-restoration`) are
@@ -68,9 +78,11 @@
   "phase -> {:label .. :writes <ops allowed to write> :auto <ops allowed to
   auto-commit when governor-clean>}."
   {0 {:label "read-only"        :writes #{}                                                              :auto #{}}
-   1 {:label "assisted-intake"  :writes #{:meter/intake :feeder/log-status}                               :auto #{}}
+   1 {:label "assisted-intake"  :writes #{:meter/intake :feeder/log-status
+                                          :feeder/register-power-supply}                                   :auto #{}}
    2 {:label "assisted-verify"  :writes #{:meter/intake :identity/verify :dispute/screen
-                                          :feeder/log-status :supply/report-status}                        :auto #{}}
+                                          :feeder/log-status :supply/report-status
+                                          :feeder/register-power-supply}                                   :auto #{}}
    3 {:label "supervised-auto"  :writes write-ops
       :auto #{:meter/intake :actuation/provision-service}}})
 

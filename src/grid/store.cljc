@@ -52,7 +52,21 @@
   source-actor`/`:grid-outage/duration-minutes` fields are the shared,
   no-code, optional wire shape `cloud-itonami-jsic-4721`'s
   `coldchain.governor` independently cross-checks its own self-reported
-  `:lot/power-outage-minutes` against."
+  `:lot/power-outage-minutes` against.
+
+  ── Additive: feeder <-> generator power-supply linkage ──
+
+  A feeder record MAY also carry `:power-supply/id`/`:power-supply/
+  source-actor`/`:power-supply/feeder-ref`/`:power-supply/capacity-mw`/
+  `:power-supply/agreement-start-iso` -- the OTHER half of the SAME
+  kind of no-shared-code, flat cross-actor wire shape as `:grid-outage/
+  *` above, this time upstream: it names which generation actor
+  (`cloud-itonami-isic-3511` SMR or `cloud-itonami-isic-3512` community
+  renewable) supplies this feeder. See `grid.gridadvisor/register-
+  power-supply` and superproject ADR-2800000500. Entirely optional and
+  additive -- `:feeder/upsert` (already this actor's generic feeder
+  directory-patch effect) carries these fields when present; a feeder
+  with none of them behaves exactly as it did before this addition."
   (:require #?(:clj  [clojure.edn :as edn]
                :cljs [cljs.reader :as edn])
             [grid.registry :as registry]
@@ -378,19 +392,47 @@
 
 ;; ---- additive: feeder + outage-event tx/pull helpers ----
 
-(defn- feeder->tx [{:keys [id substation-id jurisdiction status]}]
+(defn- feeder->tx
+  "Additive: `:power-supply/*` (see `grid.gridadvisor/register-power-
+  supply`, superproject ADR-2800000500) is OPTIONAL -- a feeder with
+  none of these fields round-trips exactly as it did before this
+  addition."
+  [{:keys [id substation-id jurisdiction status] :as feeder}]
   (cond-> {:feeder/id id}
     substation-id (assoc :feeder/substation-id substation-id)
     jurisdiction  (assoc :feeder/jurisdiction jurisdiction)
-    status        (assoc :feeder/status status)))
+    status        (assoc :feeder/status status)
+    (:power-supply/id feeder)
+    (assoc :feeder/power-supply-id (:power-supply/id feeder))
+    (:power-supply/source-actor feeder)
+    (assoc :feeder/power-supply-source-actor (:power-supply/source-actor feeder))
+    (:power-supply/feeder-ref feeder)
+    (assoc :feeder/power-supply-feeder-ref (:power-supply/feeder-ref feeder))
+    (some? (:power-supply/capacity-mw feeder))
+    (assoc :feeder/power-supply-capacity-mw (:power-supply/capacity-mw feeder))
+    (:power-supply/agreement-start-iso feeder)
+    (assoc :feeder/power-supply-agreement-start-iso (:power-supply/agreement-start-iso feeder))))
 
 (def ^:private feeder-pull
-  [:feeder/id :feeder/substation-id :feeder/jurisdiction :feeder/status])
+  [:feeder/id :feeder/substation-id :feeder/jurisdiction :feeder/status
+   :feeder/power-supply-id :feeder/power-supply-source-actor
+   :feeder/power-supply-feeder-ref :feeder/power-supply-capacity-mw
+   :feeder/power-supply-agreement-start-iso])
 
 (defn- pull->feeder [f]
   (when (:feeder/id f)
-    {:id (:feeder/id f) :substation-id (:feeder/substation-id f)
-     :jurisdiction (:feeder/jurisdiction f) :status (:feeder/status f)}))
+    (cond-> {:id (:feeder/id f) :substation-id (:feeder/substation-id f)
+             :jurisdiction (:feeder/jurisdiction f) :status (:feeder/status f)}
+      (:feeder/power-supply-id f)
+      (assoc :power-supply/id (:feeder/power-supply-id f))
+      (:feeder/power-supply-source-actor f)
+      (assoc :power-supply/source-actor (:feeder/power-supply-source-actor f))
+      (:feeder/power-supply-feeder-ref f)
+      (assoc :power-supply/feeder-ref (:feeder/power-supply-feeder-ref f))
+      (some? (:feeder/power-supply-capacity-mw f))
+      (assoc :power-supply/capacity-mw (:feeder/power-supply-capacity-mw f))
+      (:feeder/power-supply-agreement-start-iso f)
+      (assoc :power-supply/agreement-start-iso (:feeder/power-supply-agreement-start-iso f)))))
 
 (defn- outage->tx [{:keys [id feeder-id jurisdiction cause-category open?]
                      :as outage}]

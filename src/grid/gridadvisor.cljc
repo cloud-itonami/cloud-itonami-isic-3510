@@ -244,6 +244,38 @@
      :stake      nil
      :confidence (if f 0.9 0.3)}))
 
+;; ----------------------------- additive: feeder <-> generator power-supply linkage -----------------------------
+
+(defn- register-power-supply
+  "Feeder power-supply-SOURCE registration -- draft the ADMINISTRATIVE
+  linkage of a feeder to an upstream GENERATION actor's own committed
+  `:power-supply` record: `:power-supply/id` / `:power-supply/source-
+  actor` (e.g. \"cloud-itonami-isic-3511\"/\"cloud-itonami-isic-3512\")
+  / `:power-supply/feeder-ref` / `:power-supply/capacity-mw` /
+  `:power-supply/agreement-start-iso` -- see superproject
+  ADR-2800000500 for why this shape is shared, flat and non-code (the
+  SAME 'no shared library, just a field-name convention each side
+  independently verifies' discipline `:grid-outage/*` (ADR-2608510000)
+  and the isic-1075<->jsic-4721 `:handoff/*` records established).
+
+  Reuses the SAME low-stakes normalize-only shape as `log-feeder-
+  status` (`:effect :feeder/upsert`): registering WHICH generator
+  supplies a feeder is a directory fact about an existing, already-
+  agreed arrangement, not a real-time dispatch decision -- this actor
+  never calls the generation actor's own code, never re-derives its
+  own generation output from it, and never actuates a supply change
+  because of it. The `:power-supply/*` fields are entirely OPTIONAL on
+  a feeder record; a feeder with none of them behaves exactly as
+  before this addition."
+  [_db {:keys [patch]}]
+  {:summary    (str "フィーダー電力供給元登録: " (pr-str (keys patch)))
+   :rationale  "入力patchの正規化のみ。新規事実の生成なし -- 発電actor側の確定record(:power-supply/*)をフィーダー記録に紐付けるだけ。"
+   :cites      (vec (keys patch))
+   :effect     :feeder/upsert
+   :value      patch
+   :stake      nil
+   :confidence 0.95})
+
 (defn infer
   "Route a request to the right proposal generator.
   request: {:op kw :subject id ...op-specific...}"
@@ -258,6 +290,7 @@
     :actuation/log-outage-event      (propose-outage-event db request)
     :actuation/report-restoration    (propose-restoration db request)
     :supply/report-status            (report-supply-status db request)
+    :feeder/register-power-supply    (register-power-supply db request)
     {:summary "未対応の操作" :rationale (str op) :cites []
      :effect :noop :stake nil :confidence 0.0}))
 
@@ -292,6 +325,7 @@
     :actuation/log-outage-event      {:feeder (store/feeder st subject)}
     :actuation/report-restoration    {:outage (store/outage-of st subject)}
     :supply/report-status            {:feeder (store/feeder st subject)}
+    :feeder/register-power-supply    {:feeder (store/feeder st subject)}
     {:meter (store/meter st subject)}))
 
 (defn- parse-proposal

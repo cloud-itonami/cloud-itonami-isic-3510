@@ -84,3 +84,28 @@
 (deftest gate-holds-outage-event-log-before-phase-3
   (is (= :hold (:disposition (phase/gate 1 {:op :actuation/log-outage-event} :commit))))
   (is (= :phase-disabled (:reason (phase/gate 1 {:op :actuation/log-outage-event} :commit)))))
+
+;; ───────────── Additive: feeder <-> generator power-supply linkage ─────────────
+
+(deftest register-power-supply-enabled-from-phase-1
+  (testing "the same early-enabled posture as :feeder/log-status"
+    (is (contains? (:writes (get phase/phases 1)) :feeder/register-power-supply))
+    (is (contains? (:writes (get phase/phases 2)) :feeder/register-power-supply))
+    (is (contains? (:writes (get phase/phases 3)) :feeder/register-power-supply))))
+
+(deftest register-power-supply-never-auto-at-any-phase
+  (testing "a directory fact about an already-agreed arrangement, but still never auto-eligible in this V1 -- the SAME posture :feeder/log-status has"
+    (doseq [[n {:keys [auto]}] phase/phases]
+      (is (not (contains? auto :feeder/register-power-supply))
+          (str "phase " n " must not auto-commit :feeder/register-power-supply")))))
+
+(deftest phase-3-auto-set-is-unchanged-by-power-supply-addition
+  (testing "adding :feeder/register-power-supply to write-ops/phase-writes does NOT expand phase 3's :auto set"
+    (is (= #{:meter/intake :actuation/provision-service} (:auto (get phase/phases 3))))))
+
+(deftest gate-escalates-a-clean-power-supply-registration
+  (is (= :escalate (:disposition (phase/gate 3 {:op :feeder/register-power-supply} :commit)))))
+
+(deftest gate-holds-power-supply-registration-before-phase-1
+  (is (= :hold (:disposition (phase/gate 0 {:op :feeder/register-power-supply} :commit))))
+  (is (= :phase-disabled (:reason (phase/gate 0 {:op :feeder/register-power-supply} :commit)))))
