@@ -1,0 +1,117 @@
+<html><head><meta charset="utf-8"><title>cloud-itonami-isic-3510 &middot; electric power generation, transmission and distribution</title><style>
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ok { color: #137a3f; }
+body { font-family: system-ui,-apple-system,sans-serif; margin: 0; color: #1a1a1a; background: #fafafa; }
+header.bar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e5e5e5; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+h2 { margin-top: 0; font-size: 15px; }
+.warn { color: #b25c00; background: #fff8e1; padding: 2px 6px; border-radius: 4px; }
+main { max-width: 980px; margin: 24px auto; padding: 0 20px; }
+header.bar h1 { font-size: 18px; margin: 0; font-weight: 600; }
+.muted { color: #888; font-size: 13px; }
+.critical { color: #fff; background: #b3261e; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.err { color: #b3261e; background: #fbe9e7; padding: 2px 6px; border-radius: 4px; }
+th { font-weight: 600; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+header.bar .badge { margin-left: auto; font-size: 12px; color: #666; }
+code { font-size: 12px; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+</style></head><body>
+<header class="bar">
+  <h1>Electric power generation, transmission and distribution (ISIC 3510) — Operator Console</h1>
+  <span class="badge">read-only sample · governor-gated · disconnection and outage-event actuation always human-approved</span>
+</header>
+<main>
+  <section class="card">
+    <h2>Meters</h2>
+    <p class="muted">Demo snapshot — build-time-generated from <code>grid.store</code> via <code>grid.render-html</code> (<code>clojure -M:dev:render-html</code>), regenerated nightly.</p>
+    <table>
+      <thead><tr><th>Meter</th><th>Customer</th><th>Meter number</th><th>Jurisdiction</th><th>Capacity (kW)</th><th>Protected recipient</th><th>Billing/service dispute</th><th>Provisioning / disconnection</th><th>Last op status</th></tr></thead>
+      <tbody>
+        <tr><td>meter-1</td><td>Sakura Ryokan</td><td>10234567</td><td>JPN</td><td>10</td><td><span class="muted">n/a</span></td><td><span class="ok">clear</span></td><td>provisioned / disconnected</td><td><span class="ok">committed</span></td></tr>
+        <tr><td>meter-2</td><td>Atlantis Research Station</td><td>10234568</td><td>ATL</td><td>12</td><td><span class="muted">n/a</span></td><td><span class="ok">clear</span></td><td>not provisioned / not disconnected</td><td><span class="critical">HARD hold &middot; no-spec-basis</span></td></tr>
+        <tr><td>meter-3</td><td>鈴木商店</td><td>12AB567</td><td>JPN</td><td>8</td><td><span class="muted">n/a</span></td><td><span class="ok">clear</span></td><td>not provisioned / not disconnected</td><td><span class="critical">HARD hold &middot; meter-number-format-invalid</span></td></tr>
+        <tr><td>meter-4</td><td>田中在宅酸素療法宅</td><td>10234569</td><td>JPN</td><td>6</td><td><span class="critical">protected</span></td><td><span class="ok">clear</span></td><td>provisioned / not disconnected</td><td><span class="critical">HARD hold &middot; evidence-incomplete</span></td></tr>
+        <tr><td>meter-5</td><td>Sakura Foundry Works</td><td>10234570</td><td>JPN</td><td>250</td><td><span class="muted">n/a</span></td><td><span class="ok">clear</span></td><td>provisioned / not disconnected</td><td><span class="ok">committed</span></td></tr>
+        <tr><td>meter-6</td><td>田中離島診療所</td><td>10234571</td><td>JPN</td><td>15</td><td><span class="muted">n/a</span></td><td><span class="critical">unresolved</span></td><td>provisioned / not disconnected</td><td><span class="critical">HARD hold &middot; dispute-unresolved</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Feeders / substations</h2>
+    <p class="muted">Network infrastructure upstream of any one customer's meter — a separate entity from a meter, sharing the same identity-verification and audit mechanism.</p>
+    <table>
+      <thead><tr><th>Feeder</th><th>Substation</th><th>Jurisdiction</th><th>Status</th><th>Last op status</th></tr></thead>
+      <tbody>
+        <tr><td>feeder-1</td><td>SS-01</td><td>JPN</td><td>in-service</td><td><span class="ok">committed</span></td></tr>
+        <tr><td>feeder-2</td><td>SS-02</td><td>JPN</td><td>in-service</td><td><span class="ok">committed</span></td></tr>
+        <tr><td>feeder-3</td><td>SS-99</td><td>ATL</td><td>in-service</td><td><span class="critical">HARD hold &middot; no-spec-basis</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Draft service-provisioning / service-disconnection records</h2>
+    <p class="muted">Unsigned drafts only — the licensed distribution utility's own act of signing/energizing is outside this actor's authority (see README <code>Actuation</code>).</p>
+    <table>
+      <thead><tr><th>Kind</th><th>Record id</th><th>Meter</th><th>Jurisdiction</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>provisioning</td><td>JPN-PRV-000000</td><td>meter-1</td><td>JPN</td><td><span class="ok">immutable draft</span></td></tr>
+        <tr><td>provisioning</td><td>JPN-PRV-000001</td><td>meter-5</td><td>JPN</td><td><span class="ok">immutable draft</span></td></tr>
+        <tr><td>disconnection</td><td>JPN-DSC-000000</td><td>meter-1</td><td>JPN</td><td><span class="ok">immutable draft</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Draft outage-event / restoration records</h2>
+    <p class="muted">Unsigned drafts only — the upstream half of an entirely optional, no-shared-code cross-actor contract with cloud-itonami-jsic-4721 (see superproject ADR-2608510000).</p>
+    <table>
+      <thead><tr><th>Kind</th><th>Record id</th><th>Feeder / outage ref</th><th>Jurisdiction</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>outage-event</td><td>JPN-OUT-000000</td><td>feeder-1</td><td>JPN</td><td><span class="ok">immutable draft</span></td></tr>
+        <tr><td>restoration</td><td>JPN-RST-000000</td><td>outage-1</td><td>JPN</td><td><span class="ok">immutable draft</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Action gate (Grid Transmission Governor)</h2>
+    <p class="muted">HARD holds cannot be overridden by a human approver. Jurisdiction spec-basis, evidence completeness, meter-number format, protected-recipient status and unresolved billing/service disputes are independently recomputed, never trusted from the advisor's proposal; a real service disconnection or outage-event actuation is always a human distribution operator's call, at every rollout phase.</p>
+    <table>
+      <thead><tr><th>Op</th><th>Gate</th></tr></thead>
+      <tbody>
+        <tr><td><code>:meter/intake</code></td><td><span class="ok">phase-3 auto-commit when clean, no capital risk yet</span></td></tr>
+        <tr><td><code>:identity/verify</code></td><td><span class="warn">ALWAYS human approval &middot; spec-basis independently checked against <code>grid.facts</code>, never fabricated (also serves feeder outage-event verification against the separate <code>outage-catalog</code>)</span></td></tr>
+        <tr><td><code>:dispute/screen</code></td><td><span class="warn">ALWAYS human approval when clean &middot; an unresolved billing/service dispute is a HARD, un-overridable hold instead</span></td></tr>
+        <tr><td><code>:actuation/provision-service</code></td><td><span class="ok">phase-3 auto-commit when clean AND under the capacity threshold</span> &middot; <span class="warn">escalates to human capacity-impact review when clean but over-threshold</span> &middot; meter-number format independently re-verified, never auto if invalid</td></tr>
+        <tr><td><code>:actuation/disconnect-service</code></td><td><span class="warn">ALWAYS human approval</span> &middot; withholding a necessity service, never auto at any phase &middot; protected-recipient (life-support/critical-infrastructure) status is a HARD, un-overridable hold</td></tr>
+        <tr><td><code>:actuation/log-outage-event</code> / <code>:actuation/report-restoration</code></td><td><span class="warn">ALWAYS human approval</span> &middot; unconditionally high-stakes, like disconnection &middot; double-open-outage / restoration-without-open-outage independently guarded</td></tr>
+        <tr><td><code>:supply/report-status</code></td><td><span class="warn">ALWAYS human approval in this V1</span> &middot; routine, non-actuation demand-side report</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Audit ledger (this run)</h2>
+    <p class="muted">Append-only decision-fact log — every proposal, hold and commit this scenario produced.</p>
+    <table>
+      <thead><tr><th>Fact</th><th>Op</th><th>Subject</th><th>Basis</th></tr></thead>
+      <tbody>
+        <tr><td>committed</td><td><code>intake</code></td><td>meter-1</td><td>id, customer-name</td></tr>
+        <tr><td>committed</td><td><code>verify</code></td><td>meter-1</td><td>電気事業法 (Electricity Business Act), https://www.enecho.meti.go.jp/category/electricity_and_gas/electric/</td></tr>
+        <tr><td>committed</td><td><code>screen</code></td><td>meter-1</td><td>dispute-check</td></tr>
+        <tr><td>committed</td><td><code>provision-service</code></td><td>meter-1</td><td>meter-1</td></tr>
+        <tr><td>committed</td><td><code>disconnect-service</code></td><td>meter-1</td><td>meter-1</td></tr>
+        <tr><td>committed</td><td><code>verify</code></td><td>meter-5</td><td>電気事業法 (Electricity Business Act), https://www.enecho.meti.go.jp/category/electricity_and_gas/electric/</td></tr>
+        <tr><td>committed</td><td><code>provision-service</code></td><td>meter-5</td><td>meter-5</td></tr>
+        <tr><td>governor-hold</td><td><code>verify</code></td><td>meter-2</td><td>no-spec-basis</td></tr>
+        <tr><td>committed</td><td><code>verify</code></td><td>meter-3</td><td>電気事業法 (Electricity Business Act), https://www.enecho.meti.go.jp/category/electricity_and_gas/electric/</td></tr>
+        <tr><td>governor-hold</td><td><code>provision-service</code></td><td>meter-3</td><td>meter-number-format-invalid</td></tr>
+        <tr><td>governor-hold</td><td><code>disconnect-service</code></td><td>meter-4</td><td>evidence-incomplete, protected-recipient</td></tr>
+        <tr><td>governor-hold</td><td><code>screen</code></td><td>meter-6</td><td>dispute-unresolved</td></tr>
+        <tr><td>committed</td><td><code>verify</code></td><td>feeder-1</td><td>電気事業法 (Electricity Business Act, Act No. 170 of 1964) 第2条第1項第8号, https://www.enecho.meti.go.jp/category/electricity_and_gas/electric/</td></tr>
+        <tr><td>committed</td><td><code>log-outage-event</code></td><td>feeder-1</td><td>電気事業法 (Electricity Business Act, Act No. 170 of 1964) 第2条第1項第8号, https://www.enecho.meti.go.jp/category/electricity_and_gas/electric/</td></tr>
+        <tr><td>committed</td><td><code>report-restoration</code></td><td>outage-1</td><td>電気事業法 (Electricity Business Act, Act No. 170 of 1964) 第2条第1項第8号, https://www.enecho.meti.go.jp/category/electricity_and_gas/electric/</td></tr>
+        <tr><td>committed</td><td><code>report-status</code></td><td>feeder-2</td><td>feeder-2</td></tr>
+        <tr><td>governor-hold</td><td><code>verify</code></td><td>feeder-3</td><td>no-spec-basis</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+</body></html>
