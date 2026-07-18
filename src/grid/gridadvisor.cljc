@@ -276,6 +276,59 @@
    :stake      nil
    :confidence 0.95})
 
+;; ----------------------------- additive: feeder <-> downstream power-metering -----------------------------
+
+(defn- log-metering-reading
+  "Draft a POWER-METERING reading log for `subject` (a feeder-id) -- the
+  shared `:power-metering/*` wire shape this actor hands to a
+  downstream physical-operations client (e.g. cloud-itonami-jsic-4721)
+  for reconciliation against ITS own registered equipment-assets' rated
+  power draw. See superproject ADR-2800001000 for the full shared
+  shape. Reuses the SAME low-stakes normalize-shape as `log-feeder-
+  status`/`register-power-supply` (`:effect :feeder/upsert`): logging a
+  metering reading is a routine operational-measurement fact, not a
+  real-time dispatch decision or actuation -- this actor never calls
+  the downstream client's own code and never actuates anything because
+  of it.
+
+  `:power-metering/id` is generated deterministically from (subject,
+  period-start-iso) -- a feeder cannot have two DIFFERENT readings
+  that start at the exact same instant, so this needs no jurisdiction-
+  scoped sequence counter (unlike `grid.registry/register-outage-
+  event`'s `-OUT-000001`-style numbering) -- a deliberate scope
+  reduction, see this actor's own README/ADR. `grid.governor`'s
+  `metering-reading-invalid-violations` INDEPENDENTLY re-verifies the
+  feeder's own existence, the period's own chronological ordering and
+  a non-negative `:consumed-kwh` before this is ever allowed to
+  commit -- this fn does NOT pre-validate those (the governor is the
+  fail-closed backstop, the same 'advisor proposes, governor
+  independently verifies' split every other proposal in this ns
+  uses)."
+  [db {:keys [subject client-actor period-start-iso period-end-iso consumed-kwh]}]
+  (let [f (store/feeder db subject)]
+    (if (nil? f)
+      {:summary    (str subject " のフィーダー記録が見つかりません")
+       :rationale  "存在しないフィーダーへの計量記録は提案できない"
+       :cites      []
+       :effect     :feeder/upsert
+       :value      {}
+       :stake      nil
+       :confidence 0.2}
+      {:summary    (str subject " の計量記録 " period-start-iso "〜" period-end-iso
+                        " (" consumed-kwh "kWh, client=" client-actor ") を提案")
+       :rationale  (str "フィーダー自身の記録済み jurisdiction=" (:jurisdiction f) " に基づく計量記録")
+       :cites      [subject]
+       :effect     :feeder/upsert
+       :value      {:id subject
+                    :power-metering/id (str subject "-MTR-" period-start-iso)
+                    :power-metering/feeder-ref subject
+                    :power-metering/client-actor client-actor
+                    :power-metering/period-start-iso period-start-iso
+                    :power-metering/period-end-iso period-end-iso
+                    :power-metering/consumed-kwh consumed-kwh}
+       :stake      nil
+       :confidence 0.95})))
+
 (defn infer
   "Route a request to the right proposal generator.
   request: {:op kw :subject id ...op-specific...}"
@@ -291,6 +344,7 @@
     :actuation/report-restoration    (propose-restoration db request)
     :supply/report-status            (report-supply-status db request)
     :feeder/register-power-supply    (register-power-supply db request)
+    :feeder/log-metering-reading     (log-metering-reading db request)
     {:summary "未対応の操作" :rationale (str op) :cites []
      :effect :noop :stake nil :confidence 0.0}))
 
@@ -326,6 +380,7 @@
     :actuation/report-restoration    {:outage (store/outage-of st subject)}
     :supply/report-status            {:feeder (store/feeder st subject)}
     :feeder/register-power-supply    {:feeder (store/feeder st subject)}
+    :feeder/log-metering-reading     {:feeder (store/feeder st subject)}
     {:meter (store/meter st subject)}))
 
 (defn- parse-proposal

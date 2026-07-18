@@ -61,14 +61,26 @@
   generation actor (`cloud-itonami-isic-3511`/`-3512`) supplies a
   feeder -- see `grid.gridadvisor`/superproject ADR-2800000500. A
   directory fact about an already-agreed arrangement, not a dispatch
-  decision; phase 3's `:auto` set is UNCHANGED by this addition.")
+  decision; phase 3's `:auto` set is UNCHANGED by this addition.
+
+  ── Additive: feeder <-> downstream power-metering reconciliation ──
+
+  `:feeder/log-metering-reading` (phase 2+, the SAME 'routine report,
+  enabled early, never auto' posture as `:supply/report-status`) logs
+  a metering reading a downstream client may independently reconcile
+  -- see `grid.gridadvisor`/`grid.governor`/superproject
+  ADR-2800001000. Placed at phase 2 rather than phase 1 (unlike the
+  directory-fact `:feeder/register-power-supply`) because it is closer
+  in kind to `:supply/report-status`'s own routine-reporting posture
+  than to a one-time administrative linkage; phase 3's `:auto` set is
+  UNCHANGED by this addition.")
 
 (def read-ops  #{})
 (def write-ops #{:meter/intake :identity/verify :dispute/screen
                  :actuation/provision-service :actuation/disconnect-service
                  :feeder/log-status :actuation/log-outage-event
                  :actuation/report-restoration :supply/report-status
-                 :feeder/register-power-supply})
+                 :feeder/register-power-supply :feeder/log-metering-reading})
 
 ;; NOTE the invariant: `:actuation/disconnect-service` (and, ADDITIVE,
 ;; `:actuation/log-outage-event`/`:actuation/report-restoration`) are
@@ -82,7 +94,7 @@
                                           :feeder/register-power-supply}                                   :auto #{}}
    2 {:label "assisted-verify"  :writes #{:meter/intake :identity/verify :dispute/screen
                                           :feeder/log-status :supply/report-status
-                                          :feeder/register-power-supply}                                   :auto #{}}
+                                          :feeder/register-power-supply :feeder/log-metering-reading}       :auto #{}}
    3 {:label "supervised-auto"  :writes write-ops
       :auto #{:meter/intake :actuation/provision-service}}})
 
