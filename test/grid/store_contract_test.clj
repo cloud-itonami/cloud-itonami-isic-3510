@@ -128,6 +128,35 @@
           (is (= 1 (count (store/restoration-history s))))
           (is (= 1 (store/next-restoration-sequence s "JPN"))))))))
 
+(deftest feeder-power-supply-linkage-write-parity
+  (testing "additive: a feeder MAY carry the upstream generator's :power-supply/* record fields (superproject ADR-2800000500), on BOTH backends"
+    (doseq [[label s] (backends)]
+      (testing label
+        (store/commit-record! s {:effect :feeder/upsert
+                                 :value {:id "feeder-2"
+                                         :power-supply/id "ps-smr-1"
+                                         :power-supply/source-actor "cloud-itonami-isic-3511"
+                                         :power-supply/feeder-ref "feeder-2"
+                                         :power-supply/capacity-mw 12.5
+                                         :power-supply/agreement-start-iso "2026-04-01"}})
+        (let [f (store/feeder s "feeder-2")]
+          (is (= "ps-smr-1" (:power-supply/id f)))
+          (is (= "cloud-itonami-isic-3511" (:power-supply/source-actor f)))
+          (is (= "feeder-2" (:power-supply/feeder-ref f)))
+          (is (= 12.5 (:power-supply/capacity-mw f)))
+          (is (= "2026-04-01" (:power-supply/agreement-start-iso f)))
+          (is (= "SS-02" (:substation-id f)) "unrelated pre-existing field preserved")
+          (is (= "JPN" (:jurisdiction f)) "unrelated pre-existing field preserved"))))))
+
+(deftest feeder-without-power-supply-linkage-is-unaffected
+  (testing "a feeder that never registers a :power-supply/* linkage behaves exactly as before this addition"
+    (doseq [[label s] (backends)]
+      (testing label
+        (let [f (store/feeder s "feeder-1")]
+          (is (nil? (:power-supply/id f)))
+          (is (nil? (:power-supply/source-actor f)))
+          (is (= "SS-01" (:substation-id f))))))))
+
 (deftest datomic-empty-store-is-usable
   (let [s (store/datomic-store)]
     (is (nil? (store/meter s "nope")))

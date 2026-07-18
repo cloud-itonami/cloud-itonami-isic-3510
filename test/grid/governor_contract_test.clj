@@ -290,3 +290,41 @@
           res (exec-op actor "o9" {:op :supply/report-status :subject "feeder-1"} operator)]
       (is (= :interrupted (:status res)))
       (is (= :commit (get-in (approve! actor "o9") [:state :disposition]))))))
+
+;; ───────────── Additive: feeder <-> generator power-supply linkage ─────────────
+;;
+;; The receiving-side half of the entirely optional, no-shared-code
+;; isic-3510 <-> isic-3511/isic-3512 cross-actor contract (superproject
+;; ADR-2800000500) -- a feeder registers WHICH generation actor
+;; supplies it, via the SAME low-stakes directory-upsert shape as
+;; `:feeder/log-status`.
+
+(deftest register-power-supply-always-needs-approval-then-links-the-feeder
+  (testing "a directory fact, never auto -- see grid.phase"
+    (let [[db actor] (fresh)
+          res (exec-op actor "p1"
+                    {:op :feeder/register-power-supply :subject "feeder-2"
+                     :patch {:id "feeder-2"
+                             :power-supply/id "ps-smr-1"
+                             :power-supply/source-actor "cloud-itonami-isic-3511"
+                             :power-supply/feeder-ref "feeder-2"
+                             :power-supply/capacity-mw 12.5
+                             :power-supply/agreement-start-iso "2026-04-01"}}
+                    operator)]
+      (is (= :interrupted (:status res)))
+      (let [r2 (approve! actor "p1")
+            f (store/feeder db "feeder-2")]
+        (is (= :commit (get-in r2 [:state :disposition])))
+        (is (= "ps-smr-1" (:power-supply/id f)))
+        (is (= "cloud-itonami-isic-3511" (:power-supply/source-actor f)))
+        (is (= 12.5 (:power-supply/capacity-mw f)))
+        (is (= "SS-02" (:substation-id f)) "unrelated pre-existing field preserved")))))
+
+(deftest register-power-supply-disabled-before-phase-1
+  (testing "phase-disabled, not a governor hold, before the op is enabled"
+    (let [[_db actor] (fresh)
+          res (exec-op actor "p2"
+                    {:op :feeder/register-power-supply :subject "feeder-2"
+                     :patch {:id "feeder-2" :power-supply/id "ps-smr-1"}}
+                    (assoc operator :phase 0))]
+      (is (= :hold (get-in res [:state :disposition]))))))
