@@ -283,7 +283,7 @@
   shared `:power-metering/*` wire shape this actor hands to a
   downstream physical-operations client (e.g. cloud-itonami-jsic-4721)
   for reconciliation against ITS own registered equipment-assets' rated
-  power draw. See superproject ADR-2800001000 for the full shared
+  power draw. See superproject ADR-2800001100 for the full shared
   shape. Reuses the SAME low-stakes normalize-shape as `log-feeder-
   status`/`register-power-supply` (`:effect :feeder/upsert`): logging a
   metering reading is a routine operational-measurement fact, not a

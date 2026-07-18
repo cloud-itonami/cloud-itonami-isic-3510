@@ -162,7 +162,7 @@
   logs a `:power-metering/*` reading (period + `:consumed-kwh`) a
   downstream physical-operations client MAY independently reconcile
   against ITS OWN registered equipment-assets' rated power draw (see
-  superproject ADR-2800001000). `metering-reading-invalid-violations`
+  superproject ADR-2800001100). `metering-reading-invalid-violations`
   is a NEW HARD check (feeder existence, period ordering, non-negative
   kWh) -- this governor still has no code path that calls the
   downstream client; it works standalone either way."
@@ -375,7 +375,7 @@
   ALWAYS a HARD, un-overridable hold -- a malformed or fabricated
   metering reading must never reach a downstream client (e.g.
   cloud-itonami-jsic-4721) for reconciliation. See superproject
-  ADR-2800001000 for the shared `:power-metering/*` wire shape."
+  ADR-2800001100 for the shared `:power-metering/*` wire shape."
   [{:keys [op subject]} proposal st]
   (when (= op :feeder/log-metering-reading)
     (let [f (store/feeder st subject)
