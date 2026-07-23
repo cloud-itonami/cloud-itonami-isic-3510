@@ -295,12 +295,25 @@ pattern this repo's flagship op already establishes.
 
 `grid.facts/coverage` reports how many requested jurisdictions
 actually have an official spec-basis in `grid.facts/catalog` --
-currently 4 seeded (JPN, USA, GBR, DEU) out of ~194 jurisdictions
+currently 5 seeded (JPN, USA, GBR, DEU, MEX) out of ~194 jurisdictions
 worldwide. This is a starting catalog to prove the governor contract
 end-to-end, not a claim of global coverage. Adding a jurisdiction is
 additive: one map entry in `grid.facts/catalog`, citing a real
 official source -- never fabricate a jurisdiction's requirements to
 make coverage look bigger.
+
+MEX (Mexico) is honestly a structurally DIFFERENT shape from the
+other 4: under the Ley de la Industria Eléctrica, `Distribuidor` is by
+statutory definition a State-owned entity (Art. 3 fracción XXI --
+CFE Distribución), so the CRE (Comisión Reguladora de Energía) does
+not license private distribution-utility entrants the way JPN/USA/
+GBR/DEU's regulators do -- CRE-issued permits (Art. 46) apply to
+Generadores and Suministradores, not Distribuidores. `grid.facts`'s
+own `catalog` entry for `"MEX"` cites the CRE's actual metering
+(Art. 37), non-discriminatory connection (Art. 33) and service-
+suspension (Art. 41) framework and discloses this shape difference in
+its own `:scope-note` -- never smoothed over to look like a private-
+licensing regime it isn't.
 
 `grid.facts/outage-catalog` (additive) is a SEPARATE, smaller
 per-jurisdiction table for outage-event/restoration-reporting

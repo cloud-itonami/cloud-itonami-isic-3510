@@ -67,7 +67,17 @@
           :required-evidence ["Kundenidentitätsprüfungsnachweis (customer-identity-verification-record)"
                               "Zählerregistrierungsnachweis (meter-registration-record)"
                               "Anschlusskapazitätsprüfungsnachweis (interconnection-capacity-review-record)"
-                              "Versorgungsunterbrechungsprotokoll (service-disconnection-log)"]}})
+                              "Versorgungsunterbrechungsprotokoll (service-disconnection-log)"]}
+   "MEX" {:name "Mexico"
+          :owner-authority "Comisión Reguladora de Energía (CRE)"
+          :legal-basis "Ley de la Industria Eléctrica (LIE), Diario Oficial de la Federación 11-08-2014, última reforma DOF 01-04-2024 -- Arts. 27, 33, 37 y 41"
+          :national-spec "Condiciones generales que emite la CRE para el Servicio Público de Transmisión y Distribución de Energía Eléctrica: acceso no indebidamente discriminatorio a la conexión de Centros de Carga cuando sea técnicamente factible (Art. 33); medición sujeta a dichas condiciones generales (Art. 37); y una lista TASADA de causales bajo las cuales el Distribuidor puede suspender/cortar el servicio a un Usuario Final -- caso fortuito o fuerza mayor, mantenimiento programado con aviso previo, incumplimiento de pago oportuno, terminación del contrato de suministro, alteración de instrumentos de medición o control, incumplimiento de normas oficiales mexicanas o fallas en instalaciones del usuario, uso indebido de la energía, e incumplimiento contractual pactado como causal de suspensión (Art. 41); las condiciones generales del Art. 27 deben además fijar tarifas, condiciones crediticias y de suspensión del servicio, y el procedimiento de atención de quejas"
+          :provenance "https://www.diputados.gob.mx/LeyesBiblio/pdf/LIElec.pdf"
+          :scope-note "Unlike JPN/USA/GBR/DEU, `Distribuidor` in Mexico is BY STATUTORY DEFINITION a State-owned entity or subsidiary (LIE Art. 3 fracción XXI: \"organismos o empresas del Estado o sus subsidiarias\" -- i.e. CFE Distribución) -- the CRE does not license/permit private distribution-utility entrants the way this catalog's other 4 jurisdictions do. CRE-issued permits under LIE Art. 46 apply to Generadores and Suministradores (suppliers), NOT to Distribuidores (verified directly against CRE's own public FAQ, 'Preguntas frecuentes sobre la nueva regulación en temas eléctricos', section '¿Quién requiere permiso de la CRE?'). CRE's regulatory role over distribution here is tariff/service-condition/metering/suspension oversight of a state monopoly, not multi-entrant licensing -- cited honestly as such, never inflated to match the other 4 entries' private-licensing shape."
+          :required-evidence ["registro de verificación de identidad del usuario (customer-identity-verification-record)"
+                              "registro de identificación del medidor (meter-registration-record)"
+                              "registro de revisión de capacidad de interconexión (interconnection-capacity-review-record)"
+                              "bitácora de suspensión del servicio (service-disconnection-log)"]}})
 
 (defn spec-basis
   "The jurisdiction's requirement map, or nil -- nil means NO spec-basis,
