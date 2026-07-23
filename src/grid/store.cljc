@@ -67,10 +67,9 @@
   additive -- `:feeder/upsert` (already this actor's generic feeder
   directory-patch effect) carries these fields when present; a feeder
   with none of them behaves exactly as it did before this addition."
-  (:require #?(:clj  [clojure.edn :as edn]
-               :cljs [cljs.reader :as edn])
-            [grid.registry :as registry]
-            [langchain.db :as d]))
+  (:require [grid.registry :as registry]
+            [langchain.db :as d]
+            [langchain-store.core :as ls]))
 
 (defprotocol Store
   (meter [s id])
@@ -352,9 +351,6 @@
    :outage-sequence/jurisdiction      {:db/unique :db.unique/identity}
    :restoration-sequence/jurisdiction {:db/unique :db.unique/identity}})
 
-(defn- enc [v] (pr-str v))
-(defn- dec* [s] (when s (edn/read-string s)))
-
 (defn- meter->tx [{:keys [id customer-name meter-number capacity-kw
                           protected-recipient? billing-dispute-unresolved?
                           service-provisioned? service-disconnected?
@@ -466,25 +462,25 @@
          (map #(pull->meter (d/pull (d/db conn) meter-pull [:meter/id %])))
          (sort-by :id)))
   (dispute-screen-of [_ id]
-    (dec* (d/q '[:find ?p . :in $ ?mid
+    (ls/dec* (d/q '[:find ?p . :in $ ?mid
                 :where [?k :dispute-screen/meter-id ?mid] [?k :dispute-screen/payload ?p]]
               (d/db conn) id)))
   (identity-verification-of [_ meter-id]
-    (dec* (d/q '[:find ?p . :in $ ?mid
+    (ls/dec* (d/q '[:find ?p . :in $ ?mid
                 :where [?a :verification/meter-id ?mid] [?a :verification/payload ?p]]
               (d/db conn) meter-id)))
   (ledger [_]
     (->> (d/q '[:find ?s ?f :where [?e :ledger/seq ?s] [?e :ledger/fact ?f]] (d/db conn))
          (sort-by first)
-         (mapv (comp dec* second))))
+         (mapv (comp ls/dec* second))))
   (provisioning-history [_]
     (->> (d/q '[:find ?s ?r :where [?e :provisioning/seq ?s] [?e :provisioning/record ?r]] (d/db conn))
          (sort-by first)
-         (mapv (comp dec* second))))
+         (mapv (comp ls/dec* second))))
   (disconnection-history [_]
     (->> (d/q '[:find ?s ?r :where [?e :disconnection/seq ?s] [?e :disconnection/record ?r]] (d/db conn))
          (sort-by first)
-         (mapv (comp dec* second))))
+         (mapv (comp ls/dec* second))))
   (next-provisioning-sequence [_ jurisdiction]
     (or (d/q '[:find ?n . :in $ ?j
               :where [?e :provisioning-sequence/jurisdiction ?j] [?e :provisioning-sequence/next ?n]]
@@ -511,11 +507,11 @@
   (outage-history [_]
     (->> (d/q '[:find ?s ?r :where [?e :outage-log/seq ?s] [?e :outage-log/record ?r]] (d/db conn))
          (sort-by first)
-         (mapv (comp dec* second))))
+         (mapv (comp ls/dec* second))))
   (restoration-history [_]
     (->> (d/q '[:find ?s ?r :where [?e :restoration/seq ?s] [?e :restoration/record ?r]] (d/db conn))
          (sort-by first)
-         (mapv (comp dec* second))))
+         (mapv (comp ls/dec* second))))
   (next-outage-sequence [_ jurisdiction]
     (or (d/q '[:find ?n . :in $ ?j
               :where [?e :outage-sequence/jurisdiction ?j] [?e :outage-sequence/next ?n]]
@@ -538,10 +534,10 @@
       (d/transact! conn [(meter->tx value)])
 
       :verification/set
-      (d/transact! conn [{:verification/meter-id (first path) :verification/payload (enc payload)}])
+      (d/transact! conn [{:verification/meter-id (first path) :verification/payload (ls/enc payload)}])
 
       :dispute-screen/set
-      (d/transact! conn [{:dispute-screen/meter-id (first path) :dispute-screen/payload (enc payload)}])
+      (d/transact! conn [{:dispute-screen/meter-id (first path) :dispute-screen/payload (ls/enc payload)}])
 
       :meter/mark-provisioned
       (let [meter-id (first path)
@@ -551,7 +547,7 @@
         (d/transact! conn
                      [(meter->tx (assoc meter-patch :id meter-id))
                       {:provisioning-sequence/jurisdiction jurisdiction :provisioning-sequence/next next-n}
-                      {:provisioning/seq (count (provisioning-history s)) :provisioning/record (enc (get result "record"))}])
+                      {:provisioning/seq (count (provisioning-history s)) :provisioning/record (ls/enc (get result "record"))}])
         result)
 
       :meter/mark-disconnected
@@ -562,7 +558,7 @@
         (d/transact! conn
                      [(meter->tx (assoc meter-patch :id meter-id))
                       {:disconnection-sequence/jurisdiction jurisdiction :disconnection-sequence/next next-n}
-                      {:disconnection/seq (count (disconnection-history s)) :disconnection/record (enc (get result "record"))}])
+                      {:disconnection/seq (count (disconnection-history s)) :disconnection/record (ls/enc (get result "record"))}])
         result)
 
       ;; ---- additive: feeder/outage-event tracking ----
@@ -579,7 +575,7 @@
         (d/transact! conn
                      [(outage->tx outage-record)
                       {:outage-sequence/jurisdiction jurisdiction :outage-sequence/next next-n}
-                      {:outage-log/seq (count (outage-history s)) :outage-log/record (enc (get result "record"))}])
+                      {:outage-log/seq (count (outage-history s)) :outage-log/record (ls/enc (get result "record"))}])
         result)
 
       :feeder/mark-restored
@@ -591,12 +587,12 @@
         (d/transact! conn
                      [(outage->tx (merge (outage-of s outage-id) outage-patch {:id outage-id}))
                       {:restoration-sequence/jurisdiction jurisdiction :restoration-sequence/next next-n}
-                      {:restoration/seq (count (restoration-history s)) :restoration/record (enc (get result "record"))}])
+                      {:restoration/seq (count (restoration-history s)) :restoration/record (ls/enc (get result "record"))}])
         result)
       nil)
     s)
   (append-ledger! [s fact]
-    (d/transact! conn [{:ledger/seq (count (ledger s)) :ledger/fact (enc fact)}])
+    (d/transact! conn [{:ledger/seq (count (ledger s)) :ledger/fact (ls/enc fact)}])
     fact)
   (with-meters [s meters]
     (when (seq meters) (d/transact! conn (mapv meter->tx (vals meters)))) s)
