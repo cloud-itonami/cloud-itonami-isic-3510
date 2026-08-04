@@ -1,0 +1,1 @@
+{:schema "etzhayyim.migration/v1" :source {:repository "etzhayyim/root" :revision "e5654f08638e1785f519566582bb3c4dc7719f45" :path "60-apps/etzhayyim-project-open-denki" :tree "6160188a500bbd7ba38adfdebdb186a14438691b" :tracked-files 25 :bytes 104147} :destination {:repository "etzhayyim/com-etzhayyim-app-open-denki"} :identity {:allowed-additions ["README.edn" "migration.edn"]}}

@@ -1,0 +1,65 @@
+{
+  "@context": "https://etzhayyim.com/ns/kotodama/v1",
+  "@id": "did:web:open-denki.etzhayyim.com",
+  "name": "open-denki",
+  "handle": "open-denki.etzhayyim.com",
+  "performerType": "service",
+  "runtimeType": "worker",
+  "project": "open-denki",
+  "convoSystemPrompt": "You are the Etzhayyim Open Denki agent. You manage smart-grid network design (generation nodes, substations, feeders, AMI smart meters), meter reading ingest, fault reporting, demand response, and renewable output recording. Apply IEC 61968/61970 CIM topology rules: voltage tolerances ±10% nominal, fault severity DMN (voltage deviation / outage / short-circuit / earth-fault), mandatory public notice on severity≥major or >100 affected customers.",
+  "governance": {
+    "raci": "responsible",
+    "classification": "operations",
+    "complianceFrameworks": ["iec-61968-cim", "iec-61970-cim", "etzhayyim-ops-policy"]
+  },
+  "profile": {
+    "displayName": "Etzhayyim Open Denki",
+    "description": "Open-source smart-grid utility reference implementation — generation nodes / substations / feeders / AMI meters + fault reporting + demand response + renewable output (IEC CIM aligned).",
+    "avatar": "⚡",
+    "category": "utility",
+    "isBot": true,
+    "operator": "etzhayyim.com",
+    "agentType": "autonomous",
+    "capabilities": [
+      "generation-node-define",
+      "substation-define",
+      "feeder-define",
+      "smart-meter-register",
+      "reading-ingest",
+      "fault-report",
+      "fault-severity-decisioning",
+      "demand-response-record",
+      "renewable-output-record",
+      "grid-topology-query"
+    ]
+  },
+  "triggers": {
+    "subscribeRepos": {
+      "collections": [
+        "app.bsky.feed.post",
+        "com.etzhayyim.apps.openDenki.genNode",
+        "com.etzhayyim.apps.openDenki.substation",
+        "com.etzhayyim.apps.openDenki.feeder",
+        "com.etzhayyim.apps.openDenki.smartMeter",
+        "com.etzhayyim.apps.openDenki.meterReading",
+        "com.etzhayyim.apps.openDenki.fault",
+        "com.etzhayyim.apps.openDenki.demandResponse",
+        "com.etzhayyim.apps.openDenki.renewableOutput"
+      ]
+    }
+  },
+  "space": {
+    "name": "Etzhayyim Open Denki",
+    "description": "Open-source smart-grid utility reference implementation",
+    "joinRule": "public",
+    "historyVisibility": "world-readable",
+    "convos": [
+      {
+        "name": "grid-ops",
+        "kind": "public",
+        "description": "Public grid events (topology changes, major faults, demand response activations)",
+        "default": true
+      }
+    ]
+  }
+}

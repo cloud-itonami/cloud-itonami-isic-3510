@@ -1,0 +1,10 @@
+{
+  "name": "@etzhayyim/open-denki-xrpc-adapter",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {"dev": "wrangler dev", "deploy": "wrangler deploy"},
+  "dependencies": {"@etzhayyim/sdk": "git+https://github.com/etzhayyim/com-etzhayyim-sdk.git#12314a0cc5ac2feb49dd9789d5c002398acb6988", "@etzhayyim/open-denki-kotoba": "workspace:*"},
+    "@etzhayyim/sdk-auth": "git+https://github.com/etzhayyim/com-etzhayyim-sdk-auth.git#1b2d068c9089e4b318be24d7b4c229df65055c80",
+  "devDependencies": {"@cloudflare/workers-types": "^4.20240712.0", "wrangler": "^3.78.0", "typescript": "^5.5.0"}
+}
