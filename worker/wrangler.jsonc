@@ -1,7 +1,28 @@
 {
+  // NOTE: this app used to be built by SvelteKit's @sveltejs/adapter-cloudflare,
+  // which emitted both a server-rendering Worker script (`main`, at
+  // svelte/.svelte-kit/cloudflare/_worker.js — the actual deployed handler,
+  // which served the XRPC proxy at
+  // svelte/src/routes/xrpc/[...path]/+server.ts) and a static client bundle
+  // (`assets.directory`, the +page.svelte status page). The frontend was
+  // migrated to a plain ClojureScript (shadow-cljs + reagent + re-frame +
+  // jp-go-dds) static bundle with no server-rendering step — see cljs/ and
+  // the repo README. `main` is dropped (a Cloudflare Worker can be
+  // assets-only) and `assets.directory` now points at the cljs build output.
+  //
+  // `main` is NOT repointed at either Worker source still in this repo
+  // (`src/app.ts` or the moved `src/xrpc-mcp-router-proxy.ts`): neither
+  // calls `env.ASSETS.fetch`, so putting either in front of the assets would
+  // mean nothing serves the static files.
+  //
+  // This edit is UNVERIFIED: `wrangler deploy`/`wrangler dev` were not run
+  // against it. Dropping `main` means the XRPC BFF proxy endpoint
+  // (`AGENTGATEWAY_MCP_ROUTER_URL` forwarding) that the SvelteKit build used
+  // to serve is no longer in the deploy path — see
+  // `src/xrpc-mcp-router-proxy.ts`'s own header comment for what would be
+  // needed to revive it (an open product decision, not made here).
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "etzhayyim-open-denki",
-  "main": "svelte/.svelte-kit/cloudflare/_worker.js",
   "compatibility_date": "2026-05-07",
   "compatibility_flags": [
     "nodejs_compat"
@@ -17,14 +38,14 @@
   "vars": {
     "APP_HANDLE": "open-denki.etzhayyim.com",
     "PRIMARY_DID": "did:web:open-denki.etzhayyim.com",
-    "APP_FRAMEWORK": "sveltekit-edge-bff",
+    "APP_FRAMEWORK": "cljs-reagent-re-frame-jp-go-dds",
     "AGENTGATEWAY_MCP_ROUTER_URL": "https://mcp.etzhayyim.com/xrpc/com.etzhayyim.mcp.message"
   },
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "./svelte/.svelte-kit/cloudflare/client",
+    "directory": "./cljs/public",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none"
