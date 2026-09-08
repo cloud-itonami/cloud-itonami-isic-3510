@@ -35,7 +35,7 @@
   provision-service`/`:actuation/disconnect-service`, always human-
   gated for disconnection, and gated on a capacity threshold for
   provisioning -- see README `Actuation`)."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (defn- unsigned-certificate
   "Every certificate this actor produces is UNSIGNED -- signature is the
@@ -99,7 +99,7 @@
     (throw (ex-info "service-provisioning: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "service-provisioning: sequence must be >= 0" {})))
-  (let [provisioning-number (str (str/upper-case jurisdiction) "-PRV-" (zero-pad sequence 6))
+  (let [provisioning-number (str (str/upper jurisdiction) "-PRV-" (zero-pad sequence 6))
         record {"record_id" provisioning-number
                 "kind" "service-provisioning-draft"
                 "meter_id" meter-id
@@ -131,7 +131,7 @@
     (throw (ex-info "service-disconnection: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "service-disconnection: sequence must be >= 0" {})))
-  (let [disconnection-number (str (str/upper-case jurisdiction) "-DSC-" (zero-pad sequence 6))
+  (let [disconnection-number (str (str/upper jurisdiction) "-DSC-" (zero-pad sequence 6))
         record {"record_id" disconnection-number
                 "kind" "service-disconnection-draft"
                 "meter_id" meter-id
@@ -174,7 +174,7 @@
     (throw (ex-info "outage-event: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "outage-event: sequence must be >= 0" {})))
-  (let [outage-number (str (str/upper-case jurisdiction) "-OUT-" (zero-pad sequence 6))
+  (let [outage-number (str (str/upper jurisdiction) "-OUT-" (zero-pad sequence 6))
         record {"record_id" outage-number
                 "kind" "outage-event-draft"
                 "feeder_id" feeder-id
@@ -200,7 +200,7 @@
     (throw (ex-info "outage-restoration: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "outage-restoration: sequence must be >= 0" {})))
-  (let [restoration-number (str (str/upper-case jurisdiction) "-RST-" (zero-pad sequence 6))
+  (let [restoration-number (str (str/upper jurisdiction) "-RST-" (zero-pad sequence 6))
         record {"record_id" restoration-number
                 "kind" "outage-restoration-draft"
                 "outage_id" outage-id
