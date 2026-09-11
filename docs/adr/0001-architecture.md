@@ -33,7 +33,7 @@ later build" precedent `cloud-itonami-isic-6120` itself used.
 This repo's module names (`grid.facts`/`registry`/`store`/
 `gridadvisor`/`governor`/`phase`/`operation`/`sim`), its `Store`
 protocol shape (`MemStore` ‖ `DatomicStore` via `langchain.db`, proven
-in `test/grid/store_contract_test.clj`) and its `deps.edn`/community-
+in `test/grid/store_contract_test.cljk`) and its `deps.edn`/community-
 file/`docs/adr` conventions directly mirror `satcom.*`
 (`cloud-itonami-isic-6130`, this fleet's most recent REPO-LAYOUT
 precedent at the time this build started). The primary entity is a

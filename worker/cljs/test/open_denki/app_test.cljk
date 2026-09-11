@@ -21,7 +21,7 @@
     (is (= ["AGENTGATEWAY_MCP_ROUTER_URL" "APP_FRAMEWORK" "APP_HANDLE" "PRIMARY_DID"]
            @(rf/subscribe [:app/vars])))
     (is (false? @(rf/subscribe [:app/xrpc?])))
-    (is (= "worker/cljs/src/open_denki/app.cljs" @(rf/subscribe [:app/relative-path])))))
+    (is (= "worker/cljs/src/open_denki/app.cljk" @(rf/subscribe [:app/relative-path])))))
 
 (deftest routes-sub-reflects-db
   (testing ":app/routes reads whatever is in the db, not a fixed value"
