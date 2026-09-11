@@ -76,7 +76,7 @@
    :app/routes ["open-denki.etzhayyim.com/*"]
    :app/vars ["AGENTGATEWAY_MCP_ROUTER_URL" "APP_FRAMEWORK" "APP_HANDLE" "PRIMARY_DID"]
    :app/xrpc? false
-   :app/relative-path "worker/cljs/src/open_denki/app.cljs"})
+   :app/relative-path "worker/cljs/src/open_denki/app.cljk"})
 
 (rf/reg-event-db
  :initialize-db
