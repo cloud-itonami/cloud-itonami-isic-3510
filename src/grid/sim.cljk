@@ -1,5 +1,5 @@
 (ns grid.sim
-  "Demo driver -- `clojure -M:dev:run`. Walks a clean meter through
+  "Demo driver -- `kbb -M:dev:run`. Walks a clean meter through
   intake -> identity verification -> billing/service-dispute screening
   -> service-provisioning proposal (clean + under-threshold -> AUTO at
   phase 3) -> service-disconnection proposal (always escalates -> human

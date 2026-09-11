@@ -26,9 +26,9 @@ io.github.kotoba-lang/langgraph
   :dev {:override-deps
         {io.github.kotoba-lang/langchain
          {:local/root "../../kotoba-lang/langchain"}}}
-  ;; clojure -M:dev:run  -> drive the demo through one OperationActor
+  ;; kbb -M:dev:run  -> drive the demo through one OperationActor
   :run {:main-opts ["-m" "grid.sim"]}
-  ;; clojure -M:dev:render-html [out-file] -> regenerate docs/samples/operator-console.html
+  ;; kbb -M:dev:render-html [out-file] -> regenerate docs/samples/operator-console.html
   ;; through the real actor (flagship checklist item 2, ADR-2607189300 Wave5).
   :render-html {:main-opts ["-m" "grid.render-html"]}
   :test {:extra-paths ["test"]
