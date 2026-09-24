@@ -5,7 +5,7 @@
   configuration change, not a rewrite -- see `cloud-itonami-isic-6130`'s
   `satcom.store-contract-test` for the same pattern on a sibling
   actor."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [grid.store :as store]))
 
 (defn- backends []
