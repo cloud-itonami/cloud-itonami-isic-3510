@@ -1,0 +1,45 @@
+;; What this vertical's robot physically does, declared for
+;; kotoba.robotics.process (kotoba-lang/robotics). `kbb -M:dev:physics` runs it.
+;;
+;; README "Robotics premise": transmission-line inspection, substation
+;; maintenance, feeder switching and meter installation robots work under an
+;; actor that proposes and an independent Grid Transmission Governor that
+;; gates (anything that would breach a reliability standard needs human
+;; sign-off). The physical work: a substation patrol robot driving the yard's
+;; graded access road, a boom-mounted arm replacing a post insulator on a
+;; distribution pole, and draining a pole-mounted transformer's oil for
+;; maintenance.
+;;
+;; Every number without a cited source is marked `estimate` in its :basis.
+;; Replacing an estimate with a sourced value is this bot's growth work.
+{:physics/schema "itonami.physical-ai.spec.v1"
+ :repo "cloud-itonami/cloud-itonami-isic-3510"
+ :cases
+ [{:id :substation-patrol-leg
+   :kind :transport
+   :procedure "substation inspection robot carrying its thermal camera mast and a tool pod drives one patrol leg of the yard's gravel access road (150 m), including the graded section to the upper bay"
+   :params {:mass-kg 180.0 :payload-kg 40.0 :distance-m 150.0 :v-max-mps 1.0 :a-max-mps2 0.4
+            :brake-decel-mps2 0.8 :drive-force-n 700.0 :crr 0.06
+            :cog-height-m 0.45 :support-half-length-m 0.40 :payload-cog-height-m 1.10
+            :max-time-s 1800.0}
+   :sweep {:param :slope-deg :values [0.0 4.0 8.0 12.0 15.0]}
+   :quantity :min-tipover-margin
+   :limit {:min 0.4 :basis "estimate: keep 40 % of the static restoring moment in reserve for gravel ruts and the camera mast's sway"}
+   :boundary {:lo 0.0 :hi 25.0}}
+  {:id :replace-post-insulator
+   :kind :manipulator
+   :procedure "boom-mounted line arm lifts a new polymer post insulator from the bucket tray and sets it on the crossarm bracket"
+   :params {:l1-m 0.90 :l2-m 0.80 :m1-kg 25.0 :m2-kg 18.0
+            :from [0.60 -0.30] :to [1.20 0.50] :duration-s 4.0 :steps 500}
+   :sweep {:param :payload-kg :values [5.0 10.0 15.0 25.0 35.0]}
+   :quantity :peak-tau1-nm
+   :limit {:max 700.0 :basis "estimate: continuous shoulder torque of a ~40 kg-payload hydraulic line-work manipulator class"}
+   :boundary {:lo 1.0 :hi 150.0}}
+  {:id :drain-pole-transformer-oil
+   :kind :tank-drain
+   :procedure "pole-mounted distribution transformer (tank 0.6 m x 0.5 m, oil 0.9 m deep) drains its insulating oil through the bottom drain valve into the recovery drum"
+   :params {:tank-area-m2 0.30 :h0-m 0.9 :h-target-m 0.03 :cd 0.60 :dt-s 0.1 :max-time-s 14400.0}
+   :sweep {:param :orifice-area-m2 :values [0.00008 0.00013 0.0002 0.0003 0.0005]}
+   :quantity :time-to-target-s
+   :limit {:max 900.0 :basis "estimate: the drain must fit in a 15-minute share of the planned outage window; Torricelli flow ignores the oil's viscosity"}
+   :boundary {:lo 0.00003 :hi 0.001}}]}
