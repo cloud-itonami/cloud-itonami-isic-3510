@@ -1,5 +1,5 @@
 (ns grid.registry-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [grid.registry :as r]))
 
 ;; ----------------------------- meter-number-invalid-format? -----------------------------

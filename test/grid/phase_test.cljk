@@ -4,7 +4,7 @@
   any phase's `:auto` set, while `:actuation/provision-service` IS
   auto-eligible at phase 3 (this fleet's second asymmetric dual-
   actuation phase table -- see `grid.phase` ns docstring)."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [grid.phase :as phase]))
 
 (deftest disconnect-service-never-auto-at-any-phase
