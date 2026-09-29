@@ -22,7 +22,7 @@
  * Operation events:
  *   Fault, DemandResponse, RenewableOutput
  *
- * Identity hierarchy (path-based DIDs per CLAUDE.md):
+ * Identity hierarchy (path-based DIDs per AGENTS.md):
  *   did:web:open-denki.etzhayyim.com:gen:{id}     — GenerationNode
  *   did:web:open-denki.etzhayyim.com:sub:{id}     — Substation
  *   did:web:open-denki.etzhayyim.com:feeder:{id}  — Feeder

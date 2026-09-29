@@ -33,7 +33,7 @@ Substation (HV/MV/LV transformer)
  MeterReading (monotonic for consumption)   ← future slice
 ```
 
-## Authority-chain DIDs (per CLAUDE.md)
+## Authority-chain DIDs (per AGENTS.md)
 
 ```
 did:web:open-denki.etzhayyim.com:gen:{nodeId-slug}       — GenerationNode

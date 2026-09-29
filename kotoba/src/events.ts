@@ -10,7 +10,7 @@
  * never overwrite. recordMeterReading enforces non-decreasing kWh for
  * consumption-kind meters (rejects with `nonMonotonic` on regression).
  *
- * Fault severity DMN (per CLAUDE.md openDenki.faultSeverity):
+ * Fault severity DMN (per AGENTS.md openDenki.faultSeverity):
  *   earth_fault / short_circuit       → critical + public notice
  *   outage ≥100 customers              → critical
  *   outage ≥10 customers               → major + public notice
