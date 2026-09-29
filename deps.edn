@@ -5,7 +5,7 @@
  ;; langgraph-clj` / `com-junkawasaki/langchain-clj` names this repo
  ;; previously pointed to do not exist in this workspace -- they were
  ;; renamed/moved per the repo-naming rule that drops the `-clj` suffix,
- ;; CLAUDE.md "Repo naming — no `-clj` suffix (2026-07-10)"). This repo is
+ ;; AGENTS.md "Repo naming — no `-clj` suffix (2026-07-10)"). This repo is
  ;; standalone (forkable outside the workspace); the :local/root paths
  ;; only resolve inside the monorepo checkout — a standalone fork should
  ;; override them with git coordinates.
