@@ -71,7 +71,7 @@ kbb --backend sci ~/github/com-junkawasaki/scripts/physical-ai-bots/tick.cljk la
 「bot が必需品の単位コストを何 % 下げるか（delta）」と「profile が実際に稼働しているか」が、
 bot で生活の苦しさを解消できるかを決める 2 つの未実測量だと示した。この profile はそれを測る。
 
-- 毎日 `necessity_impact.sh`（実体は `necessity_impact.cljk`、モデル不使用）が repo 直下の `impact.json` を読み、
+- 毎日 `necessity_impact.py`（起動だけの launcher。実体は `necessity_impact.cljk`、モデル不使用）が repo 直下の `impact.json` を読み、
   `delta = 1 - with_bot.cost / baseline.cost` を **両方が数値・出典付き・with_bot が観測 30 件以上** のときだけ計算して
   `~/.hermes/profiles/<bot>/ledger/necessity-impact.jsonl` に 1 行足す。足りなければ `UNMEASURED` と欠けた項目を書く。
 - 成長 tick で選べる候補に追加: `impact.json` の `baseline` を、出典（統計・公的料金表・事業者の公開価格と URL）のある
