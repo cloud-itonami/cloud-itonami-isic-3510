@@ -43,6 +43,28 @@
       "skill": null,
       "skills": [],
       "workdir": null
+    },
+    {
+      "base_url": null,
+      "context_from": null,
+      "deliver": "local",
+      "enabled": true,
+      "enabled_toolsets": null,
+      "id": "cc648adcdda8",
+      "model": null,
+      "name": "physai-isic-3510-necessity-impact",
+      "no_agent": true,
+      "prompt": "",
+      "provider": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "17 21 * * *",
+        "display": "17 21 * * *"
+      },
+      "script": "necessity_impact.sh",
+      "skill": null,
+      "skills": [],
+      "workdir": null
     }
   ]
 }

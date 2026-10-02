@@ -1,0 +1,22 @@
+{
+  "schema": "itonami.necessity-impact.v1",
+  "necessity_role": "utilities",
+  "unit": null,
+  "baseline": {
+    "cost": null,
+    "source": null,
+    "as_of": null
+  },
+  "with_bot": {
+    "cost": null,
+    "source": null,
+    "as_of": null,
+    "n_events": 0
+  },
+  "adopters": {
+    "external_tenants": 0,
+    "source": null
+  },
+  "repo": "cloud-itonami-isic-3510",
+  "isic": "3510"
+}
