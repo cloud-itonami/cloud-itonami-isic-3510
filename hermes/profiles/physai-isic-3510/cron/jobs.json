@@ -61,7 +61,7 @@
         "expr": "17 21 * * *",
         "display": "17 21 * * *"
       },
-      "script": "necessity_impact.sh",
+      "script": "necessity_impact.py",
       "skill": null,
       "skills": [],
       "workdir": null
