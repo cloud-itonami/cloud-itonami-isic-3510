@@ -1,0 +1,71 @@
+;; Necessity-impact probe of an itonami bot profile (no model).
+;;
+;; Measures the two quantities the inequality system-dynamics model
+;; (kotoba-lang/loop-system-dynamics, reports/inequality-sensitivity.txt) found
+;; to decide whether bot profiles can relieve cost-of-living pressure, and which
+;; until now were ASSUMED:
+;;   delta    = 1 - with_bot.cost / baseline.cost  (unit-cost reduction)
+;;   activity = days in the last 30 on which this profile actually ran
+;; delta is computed ONLY from the repo's impact.json when both costs are
+;; numbers with a source and an as_of date and with_bot has >= min-events
+;; observations. Otherwise STATUS is UNMEASURED and the missing fields are
+;; listed -- never guessed, interpolated, or copied from another repo.
+;; Always exits 0; the status travels in the text and in the ledger line.
+;; Run via necessity_impact.sh (the Hermes scheduler only runs .py/.sh).
+(ns necessity-impact
+  (:require ["fs" :as fs] ["path" :as path] ["os" :as os] ["process" :as process]))
+
+(def min-events 30)
+
+(defn script-dir []
+  (or (.-HERMES_SCRIPT_DIR (.-env process))
+      (path/dirname (first (filter #(.endsWith % ".cljk") (array-seq process/argv))))))
+
+(def profile-dir (path/resolve (script-dir) ".."))
+(def profile (path/basename profile-dir))
+(def repo (path/resolve profile-dir ".." ".." ".."))
+(def hermes-home (or (.-HERMES_HOME (.-env process)) (path/join (os/homedir) ".hermes")))
+(def ledger (path/join hermes-home "profiles" profile "ledger" "necessity-impact.jsonl"))
+
+(defn num? [x] (and (number? x) (pos? x)))
+
+(defn side-missing [d need-events]
+  (cond-> []
+    (not (num? (get d "cost")))        (conj "cost")
+    (not (get d "source"))             (conj "source")
+    (not (get d "as_of"))              (conj "as_of")
+    (and need-events (not (>= (or (get d "n_events") 0) min-events))) (conj (str "n_events>=" min-events))))
+
+(defn read-json [p] (js->clj (js/JSON.parse (fs/readFileSync p "utf8"))))
+
+(defn recent-days [today-ms]
+  (if (fs/existsSync ledger)
+    (->> (.split (fs/readFileSync ledger "utf8") "\n")
+         (remove #(= "" %))
+         (keep (fn [l] (try (let [ts (get (js->clj (js/JSON.parse l)) "ts")]
+                              (when (< (- today-ms (js/Date.parse (subs ts 0 10))) (* 30 86400000)) (subs ts 0 10)))
+                            (catch :default _ nil))))
+         set)
+    #{}))
+
+(let [now (js/Date.)
+      today (subs (.toISOString now) 0 10)
+      [imp err] (try [(read-json (path/join repo "impact.json")) nil]
+                     (catch :default e [{} (str "impact.json unreadable: " (.-message e))]))
+      missing (vec (concat (when err [err])
+                           (map #(str "baseline." %) (side-missing (get imp "baseline") false))
+                           (map #(str "with_bot." %) (side-missing (get imp "with_bot") true))))
+      days (conj (recent-days (.getTime now)) today)
+      measured? (empty? missing)
+      delta (when measured?
+              (/ (js/Math.round (* 10000 (- 1.0 (/ (get-in imp ["with_bot" "cost"]) (get-in imp ["baseline" "cost"]))))) 10000.0))
+      rec {"schema" "itonami.necessity-impact.v1" "ts" (.toISOString now) "profile" profile
+           "repo" (path/basename repo) "role" (get imp "necessity_role")
+           "active_days_30" (count days) "external_tenants" (get-in imp ["adopters" "external_tenants"])
+           "status" (if measured? "MEASURED" "UNMEASURED") "missing" missing "delta" delta
+           "unit" (when measured? (get imp "unit"))}]
+  (fs/mkdirSync (path/dirname ledger) #js {:recursive true})
+  (fs/appendFileSync ledger (str (js/JSON.stringify (clj->js rec)) "\n"))
+  (println (str "STATUS\t" (get rec "status") "\nPROFILE\t" profile "\nROLE\t" (get rec "role")
+                "\nACTIVE_DAYS_30\t" (count days) "\nDELTA\t" delta))
+  (when (seq missing) (println (str "MISSING\t" (apply str (interpose ", " missing))))))

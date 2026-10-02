@@ -62,3 +62,19 @@ kbb --backend sci ~/github/com-junkawasaki/scripts/physical-ai-bots/tick.cljk la
   人の承認なしに commit されない設計を崩さない。
 - この repo 以外（kotoba-lang/robotics の solver を含む）は編集しない。solver に足りないものは報告に書く。
 - 1 反復で終える。報告は: 選んだ候補 / 変えたこと / test 数の前後 / probe の主要量の前後 / land の結果。誇張しない。
+
+<!-- necessity-impact:v1 -->
+
+## 必需品コストへの影響を測る（necessity-impact）
+
+この repo の ISIC コードは世帯の必需品（`utilities`）の供給側にある。inequality system-dynamics モデルは
+「bot が必需品の単位コストを何 % 下げるか（delta）」と「profile が実際に稼働しているか」が、
+bot で生活の苦しさを解消できるかを決める 2 つの未実測量だと示した。この profile はそれを測る。
+
+- 毎日 `necessity_impact.sh`（実体は `necessity_impact.cljk`、モデル不使用）が repo 直下の `impact.json` を読み、
+  `delta = 1 - with_bot.cost / baseline.cost` を **両方が数値・出典付き・with_bot が観測 30 件以上** のときだけ計算して
+  `~/.hermes/profiles/<bot>/ledger/necessity-impact.jsonl` に 1 行足す。足りなければ `UNMEASURED` と欠けた項目を書く。
+- 成長 tick で選べる候補に追加: `impact.json` の `baseline` を、出典（統計・公的料金表・事業者の公開価格と URL）のある
+  単位コストに置き換える。出典が取れなければ置き換えない。`with_bot` は、この repo の bot/actor が実際に処理した
+  件の実測（原価・所要時間などを `unit` で金額換算）だけを入れる。シミュレーション値を `with_bot` に入れない。
+- **捏造しない。** 他 repo の値のコピー、補間、推測は禁止。`external_tenants` は実在する外部利用者の数で、0 なら 0 と書く。
