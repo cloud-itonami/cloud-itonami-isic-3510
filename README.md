@@ -186,6 +186,7 @@ proposal, still always route to a human.
 ```bash
 kbb -M:dev:run     # walk one clean auto-committing provisioning + a dual-actuation lifecycle + six HARD-hold cases through the actor
 kbb -M:dev:test    # governor contract · phase invariants · store parity · registry conformance · facts coverage
+node --test worker/src/*.test.js    # worker adapters (event_body: JUN-410 migration encoding + admission)
 kbb -M:lint        # clj-kondo (errors fail; CI mirrors this)
 ```
 
